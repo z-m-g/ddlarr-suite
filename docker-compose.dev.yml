@@ -2,20 +2,37 @@
 services:
   ddl-torznab:
     build:
-      context: .
+      context: ./indexer
       dockerfile: Dockerfile.dev
     environment:
       - NODE_ENV=development
+      - PORT=${INDEXER_PORT:-9117}
+      - DEBUG=true
     volumes:
-      - ./src:/app/src:ro
-      - ./dist:/app/dist
+      - ./indexer/src:/app/src
     ports:
-      - "9117:9117"
+      - "${INDEXER_PORT:-9117}:${INDEXER_PORT:-9117}"
       - "9229:9229"  # Node.js debug port
-    command: ["node", "--inspect=0.0.0.0:9229", "dist/index.js"]
+    # Uses tsx watch from Dockerfile.dev CMD
+
+  ddl-downloader:
+    build:
+      context: ./downloader
+      dockerfile: Dockerfile.dev
+    environment:
+      - NODE_ENV=development
+      - PORT=${DOWNLOADER_PORT:-9118}
+      - DEBUG=true
+    volumes:
+      - ./downloader/src:/app/src
+      - ./downloader/public:/app/public
+    ports:
+      - "${DOWNLOADER_PORT:-9118}:${DOWNLOADER_PORT:-9118}"
+    # Uses tsx watch from Dockerfile.dev CMD
 
   dlprotect-resolver:
     environment:
       - FLASK_DEBUG=1
+      - PORT=${DLPROTECT_RESOLVER_PORT:-5000}
     ports:
-      - "5000:5000"  # Expose for direct testing
+      - "${DLPROTECT_RESOLVER_PORT:-5000}:${DLPROTECT_RESOLVER_PORT:-5000}"

@@ -29,8 +29,12 @@ function categoryToName(category: TorznabCategory): string {
   return names[category] || 'Other';
 }
 
-export function buildTorznabResponse(items: TorznabItem[], siteTitle: string): string {
+export function buildTorznabResponse(items: TorznabItem[], siteTitle: string, baseUrl?: string): string {
   const rssItems = items.map((item) => {
+    // Si baseUrl est fourni, génère un lien vers /torrent qui créera un faux .torrent
+    const torrentLink = baseUrl
+      ? `${baseUrl}/torrent?link=${encodeURIComponent(item.link)}&name=${encodeURIComponent(item.title)}&size=${item.size || 0}`
+      : item.link;
     const torznabAttrs: Array<{ '@_name': string; '@_value': string }> = [
       { '@_name': 'category', '@_value': String(item.category) },
     ];
@@ -71,13 +75,13 @@ export function buildTorznabResponse(items: TorznabItem[], siteTitle: string): s
         '@_isPermaLink': 'true',
         '#text': item.guid,
       },
-      link: item.link,
+      link: torrentLink,
       pubDate: item.pubDate ? formatDate(item.pubDate) : formatDate(new Date()),
       category: categoryToName(item.category),
       size: item.size || 0,
       description: item.title,
       enclosure: {
-        '@_url': item.link,
+        '@_url': torrentLink,
         '@_length': String(item.size || 0),
         '@_type': 'application/x-bittorrent',
       },

@@ -9,15 +9,15 @@ export const config = {
   sites: {
     wawacity: process.env.WAWACITY_URL || '',
     zonetelecharger: process.env.ZONETELECHARGER_URL || '',
-    darkiworld: process.env.DARKIWORLD_URL || '',
+    // darkiworld: process.env.DARKIWORLD_URL || '', // Disabled - not fully implemented
   },
 
-  darkiworldApiKey: process.env.DARKIWORLD_API_KEY || '',
-  alldebridApiKey: process.env.ALLDEBRID_API_KEY || '',
+  // darkiworldApiKey: process.env.DARKIWORLD_API_KEY || '', // Disabled
   dlprotectServiceUrl: process.env.DLPROTECT_SERVICE_URL || 'http://localhost:5000',
 } as const;
 
-export type SiteType = 'wawacity' | 'zonetelecharger' | 'darkiworld';
+export type SiteType = 'wawacity' | 'zonetelecharger';
+// export type SiteType = 'wawacity' | 'zonetelecharger' | 'darkiworld'; // Darkiworld disabled
 
 export function getSiteUrl(site: SiteType): string {
   return config.sites[site];
@@ -25,10 +25,6 @@ export function getSiteUrl(site: SiteType): string {
 
 export function isSiteConfigured(site: SiteType): boolean {
   return Boolean(config.sites[site]);
-}
-
-export function isAlldebridConfigured(): boolean {
-  return Boolean(config.alldebridApiKey);
 }
 
 export function isDlprotectServiceConfigured(): boolean {

@@ -1,6 +1,18 @@
 # DDL Torznab
 
-Indexeur Torznab pour sites DDL (Direct Download Links), compatible avec Sonarr et Radarr.
+Indexeur Torznab pour sites DDL (Direct Download Links), compatible avec Prowlarr, Sonarr et Radarr.
+
+## Architecture
+
+Le projet se compose de 3 services Docker :
+
+| Service | Port par défaut | Description |
+|---------|-----------------|-------------|
+| **ddl-torznab** | 9117 | Indexeur Torznab qui scrape les sites DDL |
+| **dlprotect-resolver** | 5000 | Service Botasaurus pour résoudre les liens dl-protect |
+| **ddl-downloader** | 9118 | Surveille un dossier blackhole et envoie les liens aux clients de téléchargement |
+
+> Les ports sont configurables via les variables `INDEXER_PORT`, `DOWNLOADER_PORT`, `DLPROTECT_RESOLVER_PORT`
 
 ## Sites supportés
 
@@ -8,148 +20,211 @@ Indexeur Torznab pour sites DDL (Direct Download Links), compatible avec Sonarr 
 |------|--------------|-------------|
 | WawaCity | `WAWACITY_URL` | Scraping HTML |
 | Zone-Téléchargement | `ZONETELECHARGER_URL` | Scraping HTML |
-| DarkiWorld | `DARKIWORLD_URL` | API |
 
 ## Installation
 
-### Avec Docker (recommandé)
+### 1. Cloner le repository
 
 ```bash
-# Cloner le repo
 git clone https://github.com/votre-repo/ddl_torznab.git
 cd ddl_torznab
+```
 
-# Configurer les variables d'environnement
+### 2. Configurer les variables d'environnement
+
+```bash
 cp .env.example .env
-# Éditer .env avec vos URLs
+```
 
-# Lancer (inclut le service de résolution dl-protect)
+Éditer le fichier `.env` :
+
+```bash
+# URLs des sites (au moins un requis)
+WAWACITY_URL=https://www.wawacity.xxx/
+ZONETELECHARGER_URL=https://www.zone-telechargement.xxx/
+
+# Chemin du dossier blackhole (requis pour le downloader)
+BLACKHOLE_PATH=/chemin/vers/blackhole
+
+# Clé API AllDebrid (optionnel mais recommandé)
+ALLDEBRID_API_KEY=votre_cle_api
+```
+
+### 3. Lancer les services
+
+```bash
 docker-compose up -d
 ```
 
-### Sans Docker
+### 4. Configurer le downloader
 
-```bash
-# Installer les dépendances
-npm install
+Accéder à l'interface web : http://localhost:9118
 
-# Configurer
-cp .env.example .env
+Configurer votre client de téléchargement (JDownloader, aria2, ou Download Station).
 
-# Build
-npm run build
+## Configuration de Radarr
 
-# Lancer
-npm start
+### Étape 1 : Ajouter l'indexeur Torznab
 
-# Ou en développement (hot reload)
-npm run dev
+1. Aller dans **Settings > Indexers > Add**
+2. Choisir **Torznab**
+3. Configurer :
+   - **Name** : DDL Wawacity (ou ZoneTelecharger)
+   - **URL** : `http://<IP>:9117/api/wawacity/` (ou `zonetelecharger`)
+   - **API Key** : `ddl-torznab` (n'importe quelle valeur)
+   - **Categories** : 2000, 2040, 2045
+4. Cliquer sur **Test** puis **Save**
+
+> Remplacer `<IP>` par l'adresse du serveur (ex: `192.168.1.100`, `localhost`, ou votre domaine)
+
+### Étape 2 : Configurer le Download Client Blackhole
+
+1. Aller dans **Settings > Download Clients > Add**
+2. Choisir **Torrent Blackhole**
+3. Configurer :
+   - **Name** : DDL Blackhole
+   - **Torrent Folder** : `/chemin/vers/blackhole` (même que `BLACKHOLE_PATH`)
+   - **Watch Folder** : `/chemin/vers/downloads` (où vos fichiers seront téléchargés par JDownloader/aria2)
+   - **Save Magnet Files** : Non (désactivé)
+4. Cliquer sur **Test** puis **Save**
+
+## Configuration de Sonarr
+
+### Étape 1 : Ajouter l'indexeur Torznab
+
+1. Aller dans **Settings > Indexers > Add**
+2. Choisir **Torznab**
+3. Configurer :
+   - **Name** : DDL Wawacity (ou ZoneTelecharger)
+   - **URL** : `http://<IP>:9117/api/wawacity/` (ou `zonetelecharger`)
+   - **API Key** : `ddl-torznab` (n'importe quelle valeur)
+   - **Categories** : 5000, 5040, 5045
+   - **Anime Categories** : 5070 (optionnel)
+4. Cliquer sur **Test** puis **Save**
+
+> Remplacer `<IP>` par l'adresse du serveur (ex: `192.168.1.100`, `localhost`, ou votre domaine)
+
+### Étape 2 : Configurer le Download Client Blackhole
+
+1. Aller dans **Settings > Download Clients > Add**
+2. Choisir **Torrent Blackhole**
+3. Configurer :
+   - **Name** : DDL Blackhole
+   - **Torrent Folder** : `/chemin/vers/blackhole` (même que `BLACKHOLE_PATH`)
+   - **Watch Folder** : `/chemin/vers/downloads` (où vos fichiers seront téléchargés par JDownloader/aria2)
+   - **Save Magnet Files** : Non (désactivé)
+4. Cliquer sur **Test** puis **Save**
+
+## URLs Torznab disponibles
+
+| Site | URL |
+|------|-----|
+| Wawacity | `http://<IP>:9117/api/wawacity/` |
+| ZoneTelecharger | `http://<IP>:9117/api/zonetelecharger/` |
+
+> Remplacer `<IP>` par l'adresse du serveur (ex: `192.168.1.100`, `localhost`, ou votre domaine)
+
+### Fonctionnement du flux complet
+
+```
+┌─────────────┐     ┌──────────────┐     ┌─────────────────┐
+│ Radarr/     │────>│ ddl-torznab  │────>│ Site DDL        │
+│ Sonarr      │     │ (recherche)  │     │ (wawacity, etc) │
+└─────────────┘     └──────────────┘     └─────────────────┘
+       │
+       │ télécharge .torrent
+       ▼
+┌─────────────┐     ┌───────────────┐     ┌─────────────────┐
+│ Blackhole   │────>│ ddl-downloader│────>│ JDownloader/    │
+│ folder      │     │ (supprime le  │     │ aria2/DS        │
+└─────────────┘     │  .torrent)    │     └─────────────────┘
+                    └───────────────┘             │
+                                                  │ télécharge
+                                                  ▼
+                                         ┌─────────────────┐
+                                         │ Downloads       │
+                                         │ folder          │
+                                         └─────────────────┘
 ```
 
-## Configuration
+1. **Radarr/Sonarr** recherche un film/série via l'indexeur Torznab
+2. L'indexeur retourne des résultats avec des liens `.torrent` (contenant des liens DDL)
+3. Radarr/Sonarr télécharge le `.torrent` dans le **dossier blackhole**
+4. Le service **ddl-downloader** détecte le nouveau fichier
+5. Il extrait le lien DDL et l'envoie au **client de téléchargement** configuré
+6. Le fichier `.torrent` est **supprimé** (ou déplacé vers `processed/` si `DEBUG=true`)
+7. Le client télécharge le fichier dans le **dossier downloads** surveillé par Radarr/Sonarr
 
-### Variables d'environnement
+## Configuration des clients de téléchargement
 
-| Variable | Description | Requis |
+### JDownloader
+
+Accédez à http://localhost:9118 pour configurer.
+
+**Via l'API locale (recommandé si sur le même réseau) :**
+- **API Mode** : Local API only
+- **Host** : IP de la machine JDownloader (ex: 192.168.1.100)
+- **Port** : 3128 (par défaut)
+
+**Via MyJDownloader (accès distant) :**
+- **API Mode** : MyJDownloader only
+- **Email** : votre email MyJDownloader
+- **Password** : votre mot de passe
+- **Device Name** : nom exact de votre appareil JDownloader
+
+### aria2
+
+- **Host** : localhost (ou IP du serveur aria2)
+- **Port** : 6800
+- **Secret** : votre token RPC (optionnel)
+- **Download Directory** : chemin de téléchargement
+
+### Synology Download Station
+
+- **Host** : IP du NAS
+- **Port** : 5000 (ou 5001 pour HTTPS)
+- **Username/Password** : identifiants DSM
+- **Use SSL** : cocher si port 5001
+
+## AllDebrid
+
+AllDebrid permet de débrider les liens des hébergeurs premium (1fichier, Uptobox, etc.) pour des téléchargements plus rapides.
+
+1. Créer un compte sur [AllDebrid](https://alldebrid.com/)
+2. Générer une clé API : https://alldebrid.com/apikeys/
+3. Ajouter la clé dans `.env` : `ALLDEBRID_API_KEY=votre_cle`
+4. Ou via l'interface web du downloader (http://localhost:9118)
+
+## Variables d'environnement
+
+Voir `.env.example` pour la liste complète.
+
+| Variable | Description | Défaut |
 |----------|-------------|--------|
-| `PORT` | Port du serveur (défaut: 9117) | Non |
-| `HOST` | Host du serveur (défaut: 0.0.0.0) | Non |
-| `WAWACITY_URL` | URL de WawaCity | Non* |
-| `ZONETELECHARGER_URL` | URL de Zone-Téléchargement | Non* |
-| `DARKIWORLD_URL` | URL de l'API DarkiWorld | Non* |
-| `DARKIWORLD_API_KEY` | Clé API DarkiWorld | Non |
-| `ALLDEBRID_API_KEY` | Clé API AllDebrid | Non |
-| `DLPROTECT_SERVICE_URL` | URL du service de résolution dl-protect | Non |
+| `INDEXER_PORT` | Port de l'indexeur Torznab | 9117 |
+| `DOWNLOADER_PORT` | Port du downloader | 9118 |
+| `DLPROTECT_RESOLVER_PORT` | Port du résolveur dl-protect | 5000 |
+| `WAWACITY_URL` | URL de WawaCity | - |
+| `ZONETELECHARGER_URL` | URL de Zone-Téléchargement | - |
+| `BLACKHOLE_PATH` | Dossier blackhole | - |
+| `ALLDEBRID_API_KEY` | Clé API AllDebrid | - |
+| `DEBUG` | Mode debug (voir ci-dessous) | false |
+| `DS_ENABLED` | Activer Download Station | false |
+| `JD_ENABLED` | Activer JDownloader | false |
+| `ARIA2_ENABLED` | Activer aria2 | false |
 
-> \* Au moins une URL de site doit être configurée.
+> Au moins une URL de site (`WAWACITY_URL` ou `ZONETELECHARGER_URL`) doit être configurée.
 
-### AllDebrid (optionnel)
+### Mode Debug
 
-Si `ALLDEBRID_API_KEY` est configuré :
-1. Les liens dl-protect sont d'abord résolus via l'API AllDebrid (redirector)
-2. Les liens DDL sont ensuite convertis via AllDebrid (debrid)
-3. Si AllDebrid échoue, le service Botasaurus prend le relais
+Par défaut (`DEBUG=false`), les fichiers `.torrent` sont **supprimés** après traitement.
 
-Si non configuré :
-- Les liens dl-protect sont résolus via le service Botasaurus
-- Les liens DDL bruts sont retournés
+En mode debug (`DEBUG=true`), les fichiers sont **déplacés** vers le dossier `processed/` pour inspection.
 
-### Service de résolution dl-protect
-
-Le docker-compose inclut un service Python basé sur [Botasaurus](https://github.com/omkarcloud/botasaurus) qui :
-- Résout les liens dl-protect en simulant un navigateur réel
-- Bypass automatiquement les protections Cloudflare Turnstile
-- Cache les résolutions de manière permanente
-- Simule un comportement humain (délais aléatoires)
-
-## Interface Web
-
-Ouvrez `http://localhost:9117` dans votre navigateur pour accéder à l'interface web qui permet de :
-- Voir les sites configurés et leur statut
-- Générer les URLs par application :
-  - **Radarr** : Films (catégories 2000, 2040, 2045)
-  - **Sonarr** : Séries (catégories 5000, 5040, 5045)
-  - **Sonarr (Anime)** : Anime (catégorie 5070 dans le champ "Anime Categories")
-
-## API Endpoints
-
-### Informations
-
-| Endpoint | Description |
-|----------|-------------|
-| `GET /` | Interface web (HTML) |
-| `GET /info` | Informations JSON sur le service |
-| `GET /health` | Health check |
-| `GET /sites` | Liste des sites configurés |
-
-### Torznab API
-
-Format : `GET /api/:site` où `:site` = `wawacity` | `zonetelecharger` | `darkiworld`
-
-| Endpoint | Description |
-|----------|-------------|
-| `/api/:site?t=caps` | Capacités de l'indexeur |
-| `/api/:site?t=search&q=...` | Recherche générale |
-| `/api/:site?t=movie&q=...` | Recherche films |
-| `/api/:site?t=tvsearch&q=...` | Recherche séries |
-
-#### Paramètres de recherche
-
-| Paramètre | Description |
-|-----------|-------------|
-| `q` | Terme de recherche |
-| `cat` | Catégories (ex: 2000,5000) |
-| `limit` | Nombre max de résultats (défaut: 100) |
-| `offset` | Décalage pour pagination |
-| `imdbid` | ID IMDb (ex: tt1234567) |
-| `tmdbid` | ID TMDb |
-| `tvdbid` | ID TVDb |
-| `season` | Numéro de saison |
-| `ep` | Numéro d'épisode |
-| `hoster` | Filtrer par hébergeur (ex: 1fichier,rapidgator) |
-
-## Configuration Sonarr / Radarr
-
-### Radarr (Films)
-
-1. Settings → Indexers → Add (bouton +)
-2. Choisir **Torznab**
-3. Configurer :
-   - **Name** : WawaCity (ou autre)
-   - **URL** : `http://localhost:9117/api/wawacity`
-   - **API Key** : laisser vide
-   - **Categories** : 2000, 2040, 2045
-
-### Sonarr (Séries)
-
-1. Settings → Indexers → Add (bouton +)
-2. Choisir **Torznab**
-3. Configurer :
-   - **Name** : WawaCity (ou autre)
-   - **URL** : `http://localhost:9117/api/wawacity`
-   - **API Key** : laisser vide
-   - **Categories** : 5000, 5040, 5045
-   - **Anime Categories** : 5070
+```bash
+# Dans .env
+DEBUG=true
+```
 
 ## Catégories Torznab
 
@@ -163,159 +238,65 @@ Format : `GET /api/:site` où `:site` = `wawacity` | `zonetelecharger` | `darkiw
 | TV/UHD | 5045 | Séries 4K |
 | Anime | 5070 | Anime |
 
-## Docker Compose
-
-```yaml
-services:
-  ddl-torznab:
-    build: .
-    container_name: ddl-torznab
-    ports:
-      - "9117:9117"
-    environment:
-      - WAWACITY_URL=https://...
-      - ZONETELECHARGER_URL=https://...
-      - DARKIWORLD_URL=https://...
-      - DARKIWORLD_API_KEY=
-      - ALLDEBRID_API_KEY=
-      - DLPROTECT_SERVICE_URL=http://dlprotect-resolver:5000
-    volumes:
-      - dlprotect-cache:/app/cache
-    depends_on:
-      - dlprotect-resolver
-    restart: unless-stopped
-
-  # Service Botasaurus pour résolution dl-protect
-  dlprotect-resolver:
-    build: ./botasaurus-service
-    container_name: dlprotect-resolver
-    environment:
-      - CACHE_DIR=/app/cache
-      - PORT=5000
-    volumes:
-      - dlprotect-cache:/app/cache
-    restart: unless-stopped
-
-volumes:
-  dlprotect-cache:
-```
-
 ## Structure du projet
 
 ```
 ddl_torznab/
-├── src/
-│   ├── index.ts           # Point d'entrée Fastify
-│   ├── config.ts          # Configuration (env vars)
-│   ├── routes/
-│   │   └── torznab.ts     # Routes API Torznab
-│   ├── scrapers/
-│   │   ├── base.ts        # Interface + helpers
-│   │   ├── wawacity.ts    # Scraper WawaCity
-│   │   ├── zonetelecharger.ts
-│   │   └── darkiworld.ts  # Client API Darki
-│   ├── debrid/
-│   │   └── alldebrid.ts   # Client AllDebrid + dl-protect
-│   ├── models/
-│   │   └── torznab.ts     # Types TypeScript
-│   ├── views/
-│   │   └── home.ts        # Interface web HTML
-│   └── utils/
-│       ├── xml.ts         # Builder XML Torznab
-│       ├── http.ts        # Client HTTP
-│       └── dlprotect.ts   # Client service Botasaurus
-├── botasaurus-service/
-│   ├── main.py            # API Flask + Botasaurus
-│   ├── requirements.txt
-│   └── Dockerfile
-├── Dockerfile
-├── Dockerfile.dev
-├── docker-compose.yml
-├── docker-compose.dev.yml
-├── package.json
-└── tsconfig.json
+├── docker-compose.yml          # Configuration Docker
+├── .env.example                # Template variables d'environnement
+├── .env                        # Variables d'environnement (à créer)
+├── indexer/                    # Service Torznab (port 9117)
+│   └── src/
+│       ├── scrapers/           # Scrapers pour chaque site
+│       ├── routes/             # API Torznab
+│       └── utils/              # Utilitaires (XML, HTTP, dl-protect)
+├── downloader/                 # Service Blackhole Downloader (port 9118)
+│   └── src/
+│       ├── clients/            # Clients de téléchargement (JD, aria2, DS)
+│       ├── routes/             # API de configuration
+│       └── watcher.ts          # Surveillance du blackhole
+└── botasaurus-service/         # Service de résolution dl-protect (port 5000)
+    └── main.py
 ```
+
+## Dépannage
+
+### Les recherches ne retournent rien
+
+- Vérifier que les URLs des sites sont correctes et accessibles
+- Consulter les logs : `docker-compose logs ddl-torznab`
+
+### Les liens ne sont pas résolus
+
+- Vérifier que le service dlprotect-resolver fonctionne : `docker-compose logs dlprotect-resolver`
+- Le premier démarrage peut prendre du temps (téléchargement de Chromium)
+
+### Le downloader ne détecte pas les fichiers
+
+- Vérifier les permissions du dossier blackhole
+- Vérifier que le chemin est correct dans docker-compose.yml
+- Consulter les logs : `docker-compose logs ddl-downloader`
+
+### JDownloader ne reçoit pas les liens
+
+- Vérifier que l'API locale est activée dans JDownloader (Settings > Advanced > API)
+- Ou vérifier vos identifiants MyJDownloader
+- Tester la connexion via l'interface web du downloader
 
 ## Développement
 
-### Mode développement local
-
 ```bash
-# Installer les dépendances
+# Indexer
+cd indexer
 npm install
-
-# Lancer en mode dev (hot reload)
 npm run dev
 
-# Type check
-npm run typecheck
-
-# Build
-npm run build
+# Downloader
+cd downloader
+npm install
+npm run dev
 ```
 
-### Mode développement Docker
-
-```bash
-# Lancer avec les fichiers de développement
-docker-compose -f docker-compose.yml -f docker-compose.dev.yml up --build
-```
-
-Fonctionnalités du mode dev :
-- Hot reload avec `tsx watch`
-- Port de debug Node.js exposé sur `9229`
-- Service Botasaurus accessible sur port `5000`
-- Volumes montés pour voir les changements en direct
-
-### Debug avec VS Code / WebStorm
-
-Ajoute une configuration de debug Node.js :
-
-```json
-{
-  "type": "node",
-  "request": "attach",
-  "name": "Docker Debug",
-  "port": 9229,
-  "address": "localhost",
-  "localRoot": "${workspaceFolder}",
-  "remoteRoot": "/app"
-}
-```
-
-### Tester le service Botasaurus directement
-
-```bash
-# Health check
-curl http://localhost:5000/health
-
-# Résoudre un lien dl-protect
-curl -X POST http://localhost:5000/resolve \
-  -H "Content-Type: application/json" \
-  -d '{"url": "https://dl-protect.link/abc123"}'
-
-# Statistiques du cache
-curl http://localhost:5000/cache/stats
-
-# Vider le cache
-curl -X POST http://localhost:5000/cache/clear
-```
-
-### Logs
-
-```bash
-# Voir les logs de tous les services
-docker-compose logs -f
-
-# Voir les logs d'un service spécifique
-docker-compose logs -f ddl-torznab
-docker-compose logs -f dlprotect-resolver
-```
-
-## Crédits
-
-Inspiré par [wastream](https://github.com/Dyhlio/wastream) pour la logique de scraping.
-
-## License
+## Licence
 
 MIT

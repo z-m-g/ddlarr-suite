@@ -1,7 +1,12 @@
+/**
+ * DarkiWorld Scraper - DISABLED
+ * This scraper is not fully implemented and is disabled.
+ * To re-enable, uncomment darkiworld in config.ts and scrapers/index.ts
+ */
 import { BaseScraper, parseQuality, parseLanguage, parseSeasonEpisode } from './base.js';
 import { ScraperResult, SearchParams, ContentType } from '../models/torznab.js';
-import { fetchJson, encodeSearchQuery } from '../utils/http.js';
-import { config } from '../config.js';
+import { fetchJson } from '../utils/http.js';
+// import { config } from '../config.js';
 
 interface DarkiSearchResult {
   id: string;
@@ -35,7 +40,8 @@ export class DarkiworldScraper implements BaseScraper {
   constructor(public readonly baseUrl: string) {}
 
   private get apiKey(): string {
-    return config.darkiworldApiKey;
+    // return config.darkiworldApiKey; // Disabled
+    return '';
   }
 
   private async apiRequest<T>(endpoint: string, params: Record<string, string> = {}): Promise<T> {

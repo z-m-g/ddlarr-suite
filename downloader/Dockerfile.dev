@@ -1,0 +1,21 @@
+# Development Dockerfile with hot reload
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install dependencies
+COPY package*.json ./
+RUN npm install
+
+# Copy source
+COPY tsconfig.json ./
+COPY src ./src
+COPY public ./public
+
+ENV NODE_ENV=development
+ENV PORT=9118
+
+EXPOSE 9118
+
+# Use tsx for development with watch mode
+CMD ["npx", "tsx", "watch", "src/index.ts"]

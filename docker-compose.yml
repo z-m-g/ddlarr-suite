@@ -1,17 +1,18 @@
 services:
+  # Torznab Indexer - provides search API for Radarr/Sonarr
   ddl-torznab:
-    build: .
+    build: ./indexer
     container_name: ddl-torznab
     ports:
-      - "9117:9117"
+      - "${INDEXER_PORT:-9117}:${INDEXER_PORT:-9117}"
     environment:
       - NODE_ENV=${NODE_ENV:-production}
+      - PORT=${INDEXER_PORT:-9117}
       - WAWACITY_URL=${WAWACITY_URL}
       - ZONETELECHARGER_URL=${ZONETELECHARGER_URL}
-      - DARKIWORLD_URL=${DARKIWORLD_URL}
-      - DARKIWORLD_API_KEY=${DARKIWORLD_API_KEY}
-      - ALLDEBRID_API_KEY=${ALLDEBRID_API_KEY}
-      - DLPROTECT_SERVICE_URL=http://dlprotect-resolver:5000
+      # - DARKIWORLD_URL=${DARKIWORLD_URL}  # Disabled - not fully implemented
+      # - DARKIWORLD_API_KEY=${DARKIWORLD_API_KEY}
+      - DLPROTECT_SERVICE_URL=http://dlprotect-resolver:${DLPROTECT_RESOLVER_PORT:-5000}
     depends_on:
       dlprotect-resolver:
         condition: service_healthy
@@ -22,18 +23,58 @@ services:
     build: ./botasaurus-service
     container_name: dlprotect-resolver
     ports:
-      - "5000:5000"
+      - "${DLPROTECT_RESOLVER_PORT:-5000}:${DLPROTECT_RESOLVER_PORT:-5000}"
     environment:
       - PYTHONUNBUFFERED=1
       - CACHE_DIR=/app/cache
-      - PORT=5000
+      - PORT=${DLPROTECT_RESOLVER_PORT:-5000}
+      - DEBUG=${DEBUG:-false}
     volumes:
       - ./cache:/app/cache
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:${DLPROTECT_RESOLVER_PORT:-5000}/health"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
     restart: unless-stopped
 
+  # DDL Downloader - watches blackhole folder and sends to download clients
+  ddl-downloader:
+    build: ./downloader
+    container_name: ddl-downloader
+    ports:
+      - "${DOWNLOADER_PORT:-9118}:${DOWNLOADER_PORT:-9118}"
+    environment:
+      - PORT=${DOWNLOADER_PORT:-9118}
+      - CONFIG_PATH=/config/config.json
+      - BLACKHOLE_PATH=/blackhole
+      - PROCESSED_PATH=/blackhole/processed
+      - ALLDEBRID_API_KEY=${ALLDEBRID_API_KEY:-}
+      - DEBUG=${DEBUG:-false}
+      # Download Station
+      - DS_ENABLED=${DS_ENABLED:-false}
+      - DS_HOST=${DS_HOST:-}
+      - DS_PORT=${DS_PORT:-5000}
+      - DS_USERNAME=${DS_USERNAME:-}
+      - DS_PASSWORD=${DS_PASSWORD:-}
+      - DS_USE_SSL=${DS_USE_SSL:-false}
+      - DS_DESTINATION=${DS_DESTINATION:-}
+      # JDownloader
+      - JD_ENABLED=${JD_ENABLED:-false}
+      - JD_API_MODE=${JD_API_MODE:-auto}
+      - JD_LOCAL_HOST=${JD_LOCAL_HOST:-}
+      - JD_LOCAL_PORT=${JD_LOCAL_PORT:-3128}
+      - JD_EMAIL=${JD_EMAIL:-}
+      - JD_PASSWORD=${JD_PASSWORD:-}
+      - JD_DEVICE=${JD_DEVICE:-}
+      # aria2
+      - ARIA2_ENABLED=${ARIA2_ENABLED:-false}
+      - ARIA2_HOST=${ARIA2_HOST:-localhost}
+      - ARIA2_PORT=${ARIA2_PORT:-6800}
+      - ARIA2_SECRET=${ARIA2_SECRET:-}
+      - ARIA2_DIR=${ARIA2_DIR:-}
+    volumes:
+      - ${DOWNLOADER_CONFIG_PATH:-./downloader-config}:/config
+      - ${BLACKHOLE_PATH:-./blackhole}:/blackhole
+    restart: unless-stopped

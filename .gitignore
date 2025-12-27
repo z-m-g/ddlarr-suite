@@ -25,6 +25,7 @@ dist/
 build/
 *.cache
 cache/
+downloader-config/
 
 # Temporary files
 *.tmp

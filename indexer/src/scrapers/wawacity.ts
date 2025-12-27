@@ -175,10 +175,15 @@ export class WawacityScraper implements BaseScraper {
         console.log(`[WawaCity] Parsed title: "${title}" -> name="${name}", season=${extractedSeason}`);
 
         // Vérifie que le nom correspond à la recherche (Levenshtein, adapté au type de contenu)
+        // Pour les films, on est moins strict car le titre original sera vérifié sur la page détail
         if (params.q && name) {
           if (!isNameMatch(params.q, name, contentType, '[WawaCity]')) {
-            console.log(`[WawaCity] Skipping "${name}" - too different from "${params.q}"`);
-            return;
+            // Pour les films, on garde le résultat pour vérifier le titre original plus tard
+            if (contentType !== 'movie') {
+              console.log(`[WawaCity] Skipping "${name}" - too different from "${params.q}"`);
+              return;
+            }
+            console.log(`[WawaCity] Keeping "${name}" (movie) - will check original title on detail page`);
           }
         }
 
@@ -270,21 +275,37 @@ export class WawacityScraper implements BaseScraper {
     const $ = cheerio.load(html);
     const results: ScraperResult[] = [];
 
-    // Extrait l'année depuis .wa-block-body .detail-list li contenant "Année:"
+    // Extrait l'année et le titre original depuis .wa-block-body .detail-list li
     let pageYear: string | undefined;
+    let originalTitle: string | undefined;
+
     $('.wa-block-body .detail-list li').each((_, li) => {
       const $li = $(li);
       const spanText = $li.find('span').first().text().trim();
+
       if (spanText.includes('Année')) {
         const yearText = $li.find('b').text().trim() || $li.find('a').text().trim();
         const yearMatch = yearText.match(/(\d{4})/);
         if (yearMatch) {
           pageYear = yearMatch[1];
           console.log(`[WawaCity] Found production year: ${pageYear}`);
-          return false; // break
+        }
+      }
+
+      if (spanText.includes('Titre original')) {
+        originalTitle = $li.find('b').text().trim();
+        if (originalTitle) {
+          console.log(`[WawaCity] Found original title: ${originalTitle}`);
         }
       }
     });
+
+    // Vérifie si le titre original correspond mieux à la recherche
+    if (params.q && originalTitle) {
+      if (isNameMatch(params.q, originalTitle, contentType, '[WawaCity]')) {
+        console.log(`[WawaCity] Original title "${originalTitle}" matches search query "${params.q}"`);
+      }
+    }
 
     // Extrait l'IMDb ID depuis les liens ou le texte (tt1234567)
     let imdbId: string | undefined;

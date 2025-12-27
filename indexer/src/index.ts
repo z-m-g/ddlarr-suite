@@ -2,7 +2,6 @@ import Fastify, { FastifyRequest, FastifyReply } from 'fastify';
 import { config } from './config.js';
 import { torznabRoutes } from './routes/torznab.js';
 import { getAvailableSites } from './scrapers/index.js';
-import { isAlldebridConfigured } from './config.js';
 import { renderHomePage } from './views/home.js';
 import { closeBrowser, getServiceCacheStats } from './utils/dlprotect.js';
 
@@ -46,7 +45,6 @@ async function start(): Promise<void> {
         version: '1.0.0',
         description: 'Torznab indexer for DDL sites',
         availableSites: getAvailableSites(),
-        alldebridEnabled: isAlldebridConfigured(),
         dlprotectCache: cacheStats ? {
           entries: cacheStats.entries,
           directory: cacheStats.directory,
@@ -66,17 +64,24 @@ async function start(): Promise<void> {
     });
 
     const cacheStats = await getServiceCacheStats();
+    const sites = getAvailableSites().join(', ') || 'None configured';
+    const cache = cacheStats ? `${cacheStats.entries} entries` : 'unavailable';
+    const serverUrl = `http://${config.host}:${config.port}`;
+    const localUrl = `http://localhost:${config.port}`;
+
+    // Helper to pad line content to 58 chars (60 - 2 for "║ " and " ║")
+    const pad = (text: string) => text.padEnd(58);
+
     console.log(`
 ╔════════════════════════════════════════════════════════════╗
 ║                    DDL Torznab Server                      ║
 ╠════════════════════════════════════════════════════════════╣
-║  Server running on http://${config.host}:${config.port}                    ║
-║                                                            ║
-║  Available sites: ${getAvailableSites().join(', ') || 'None configured'}
-║  AllDebrid: ${isAlldebridConfigured() ? 'Enabled' : 'Disabled'}
-║  DL-Protect cache: ${cacheStats ? cacheStats.entries + ' entries' : 'unavailable'}
-║                                                            ║
-║  Open http://localhost:${config.port} in your browser            ║
+║ ${pad(`Server running on ${serverUrl}`)} ║
+║ ${pad('')} ║
+║ ${pad(`Available sites: ${sites}`)} ║
+║ ${pad(`DL-Protect cache: ${cache}`)} ║
+║ ${pad('')} ║
+║ ${pad(`Open ${localUrl} in your browser`)} ║
 ╚════════════════════════════════════════════════════════════╝
 `);
   } catch (error) {

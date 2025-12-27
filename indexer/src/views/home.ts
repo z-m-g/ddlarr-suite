@@ -1,5 +1,5 @@
 import { getAvailableSites } from '../scrapers/index.js';
-import { isAlldebridConfigured, isDlprotectServiceConfigured } from '../config.js';
+import { isDlprotectServiceConfigured } from '../config.js';
 
 const APP_CONFIGS = {
   radarr: {
@@ -31,7 +31,6 @@ const APP_CONFIGS = {
 
 export function renderHomePage(host: string): string {
   const sites = getAvailableSites();
-  const alldebridEnabled = isAlldebridConfigured();
   const dlprotectServiceEnabled = isDlprotectServiceConfigured();
 
   const appSections = sites.length > 0
@@ -245,7 +244,6 @@ export function renderHomePage(host: string): string {
       <p class="subtitle">Indexeur Torznab pour Sonarr / Radarr</p>
       <div class="status-bar">
         <span><span class="dot ${sites.length > 0 ? 'on' : ''}"></span>${sites.length} site(s)</span>
-        <span><span class="dot ${alldebridEnabled ? 'on' : ''}"></span>AllDebrid</span>
         <span><span class="dot ${dlprotectServiceEnabled ? 'on' : ''}"></span>DL-Protect</span>
       </div>
     </header>

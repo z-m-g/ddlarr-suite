@@ -1,9 +1,10 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { getScraper, isValidSite, getAvailableSites, contentTypeToCategory } from '../scrapers/index.js';
-import { alldebrid } from '../debrid/index.js';
 import { buildTorznabResponse, buildCapsResponse, buildErrorResponse } from '../utils/xml.js';
 import { TorznabItem, TorznabCaps, TorznabCategory, SearchParams, ScraperResult } from '../models/torznab.js';
 import { SiteType } from '../config.js';
+import { generateFakeTorrent } from '../utils/torrent.js';
+import { isDlProtectLink, resolveDlProtectLink } from '../utils/dlprotect.js';
 
 interface TorznabQuerystring {
   t?: string;
@@ -66,8 +67,12 @@ async function processResults(results: ScraperResult[]): Promise<TorznabItem[]> 
   const items: TorznabItem[] = [];
 
   for (const result of results) {
-    // Process link (debrid if configured, clean dl-protect links)
-    const link = await alldebrid.unlockLink(result.link);
+    // Resolve dl-protect links via Botasaurus service
+    // Note: Debriding is now handled by the downloader service
+    let link = result.link;
+    if (isDlProtectLink(link)) {
+      link = await resolveDlProtectLink(link);
+    }
 
     items.push({
       title: result.title,
@@ -99,6 +104,36 @@ export async function torznabRoutes(app: FastifyInstance): Promise<void> {
   // List available sites
   app.get('/sites', async () => {
     return { sites: getAvailableSites() };
+  });
+
+  // Génère un faux fichier .torrent contenant le lien DDL
+  // Usage: /torrent?link=URL_ENCODEE&name=NOM_FICHIER&size=TAILLE
+  app.get<{
+    Querystring: { link: string; name?: string; size?: string };
+  }>('/torrent', async (request, reply) => {
+    const { link, name, size } = request.query;
+
+    if (!link) {
+      reply.status(400);
+      return { error: 'Missing link parameter' };
+    }
+
+    const decodedLink = decodeURIComponent(link);
+    const fileName = name || 'download';
+    const fileSize = size ? parseInt(size, 10) : undefined;
+
+    console.log(`[Torrent] Generating fake torrent for: ${decodedLink}`);
+
+    const torrentBuffer = generateFakeTorrent({
+      name: fileName,
+      link: decodedLink,
+      size: fileSize,
+    });
+
+    reply
+      .header('Content-Type', 'application/x-bittorrent')
+      .header('Content-Disposition', `attachment; filename="${fileName}.torrent"`)
+      .send(torrentBuffer);
   });
 
   // Generic Torznab API endpoint (without site parameter)
@@ -231,7 +266,12 @@ export async function torznabRoutes(app: FastifyInstance): Promise<void> {
       const end = start + (searchParams.limit || 100);
       const paginatedItems = items.slice(start, end);
 
-      return buildTorznabResponse(paginatedItems, scraper.name);
+      // Génère l'URL de base pour les liens torrent
+      const protocol = request.headers['x-forwarded-proto'] || 'http';
+      const host = request.headers['x-forwarded-host'] || request.headers.host;
+      const baseUrl = `${protocol}://${host}`;
+
+      return buildTorznabResponse(paginatedItems, scraper.name, baseUrl);
     } catch (error) {
       console.error(`Search error for ${site}:`, error);
       return buildErrorResponse(900, 'Internal server error');
@@ -352,7 +392,12 @@ export async function torznabRoutes(app: FastifyInstance): Promise<void> {
       const end = start + (searchParams.limit || 100);
       const paginatedItems = items.slice(start, end);
 
-      return buildTorznabResponse(paginatedItems, scraper.name);
+      // Génère l'URL de base pour les liens torrent
+      const protocol = request.headers['x-forwarded-proto'] || 'http';
+      const host = request.headers['x-forwarded-host'] || request.headers.host;
+      const baseUrl = `${protocol}://${host}`;
+
+      return buildTorznabResponse(paginatedItems, scraper.name, baseUrl);
     } catch (error) {
       console.error(`Search error for ${site}:`, error);
       return buildErrorResponse(900, 'Internal server error');

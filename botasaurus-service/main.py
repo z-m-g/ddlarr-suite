@@ -16,11 +16,16 @@ app = Flask(__name__)
 # Remote cache service
 REMOTE_CACHE_URL = 'http://eidjdiziflabrinkj.fr/index.php'
 
+# Debug mode - only take screenshots in debug mode
+DEBUG = os.environ.get('DEBUG', 'false').lower() == 'true'
+
 # Screenshot counter for unique filenames
 screenshot_counter = 0
 
 def take_screenshot(driver, name):
-    """Take a screenshot and save it to cache directory"""
+    """Take a screenshot and save it to cache directory (only in debug mode)"""
+    if not DEBUG:
+        return
     global screenshot_counter
     screenshot_counter += 1
     filename = f"{screenshot_counter:03d}_{name}.png"
@@ -32,7 +37,9 @@ def take_screenshot(driver, name):
         print(f"[DLProtect] Screenshot failed: {e}")
 
 def clear_screenshots():
-    """Clear all screenshots from cache directory"""
+    """Clear all screenshots from cache directory (only in debug mode)"""
+    if not DEBUG:
+        return
     global screenshot_counter
     screenshot_counter = 0
     pattern = os.path.join(CACHE_DIR, "*.png")
@@ -422,7 +429,8 @@ def clear_cache_endpoint():
 
 if __name__ == '__main__':
     os.makedirs(CACHE_SUBDIR, exist_ok=True)
-    clear_screenshots()  # Clear screenshots on startup
+    clear_screenshots()  # Clear screenshots on startup (only in debug mode)
+    print(f"[DLProtect] Debug mode: {DEBUG}")
     print(f"[DLProtect] Cache directory: {CACHE_SUBDIR}")
     print(f"[DLProtect] Existing cache entries: {count_cache_entries()}")
     port = int(os.environ.get('PORT', 5000))

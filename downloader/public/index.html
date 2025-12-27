@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DDL Downloader - Configuration</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #1a1a2e;
+      color: #eee;
+    }
+    h1 { color: #00d4ff; }
+    h2 { color: #00d4ff; border-bottom: 1px solid #333; padding-bottom: 10px; }
+    .card {
+      background: #16213e;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      color: #aaa;
+    }
+    input[type="text"], input[type="password"], input[type="number"] {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #333;
+      border-radius: 4px;
+      background: #0f0f23;
+      color: #fff;
+    }
+    input:focus {
+      outline: none;
+      border-color: #00d4ff;
+    }
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    input[type="checkbox"] {
+      width: 20px;
+      height: 20px;
+    }
+    button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      margin-right: 10px;
+    }
+    .btn-primary {
+      background: #00d4ff;
+      color: #000;
+    }
+    .btn-secondary {
+      background: #333;
+      color: #fff;
+    }
+    .btn-primary:hover { background: #00b8e6; }
+    .btn-secondary:hover { background: #444; }
+    .status {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    .status-ok { background: #00c853; color: #000; }
+    .status-error { background: #ff5252; color: #fff; }
+    .status-pending { background: #ffc107; color: #000; }
+    .message {
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 20px;
+    }
+    .message-success { background: #00c853; color: #000; }
+    .message-error { background: #ff5252; color: #fff; }
+    .inline-group {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+    }
+  </style>
+</head>
+<body>
+  <h1>DDL Downloader</h1>
+  <p>Configure your download clients below. The service watches the blackhole folder and sends DDL links to enabled clients.</p>
+
+  <div id="message"></div>
+
+  <div class="card">
+    <h2>General Settings</h2>
+    <div class="form-group">
+      <label>Blackhole Path</label>
+      <input type="text" id="blackholePath" placeholder="/blackhole">
+    </div>
+    <div class="form-group">
+      <label>Processed Path</label>
+      <input type="text" id="processedPath" placeholder="/blackhole/processed">
+    </div>
+    <div class="form-group">
+      <label>Scan Interval (seconds)</label>
+      <input type="number" id="scanInterval" value="10" min="1">
+    </div>
+    <button class="btn-primary" onclick="saveGeneralSettings(this)">Save General Settings</button>
+  </div>
+
+  <div class="card">
+    <h2>AllDebrid</h2>
+    <p style="color:#888;font-size:13px">Optional: Debrid links before sending to download clients for faster downloads.</p>
+    <div class="form-group">
+      <label>API Key</label>
+      <input type="password" id="alldebridApiKey" placeholder="Enter your AllDebrid API key" autocomplete="off" data-lpignore="true" data-1p-ignore>
+    </div>
+    <button class="btn-secondary" onclick="testAllDebrid()">Test Connection</button>
+    <button class="btn-primary" onclick="saveAllDebridKey(this)">Save API Key</button>
+    <span id="alldebridStatus"></span>
+  </div>
+
+  <div class="card">
+    <h2>Download Station (Synology)</h2>
+    <div class="checkbox-group form-group">
+      <input type="checkbox" id="dsEnabled">
+      <label for="dsEnabled" style="margin:0">Enable Download Station</label>
+      <span id="dsStatus"></span>
+    </div>
+    <div class="inline-group">
+      <div class="form-group">
+        <label>Host</label>
+        <input type="text" id="dsHost" placeholder="192.168.1.100">
+      </div>
+      <div class="form-group">
+        <label>Port</label>
+        <input type="number" id="dsPort" value="5000">
+      </div>
+    </div>
+    <div class="inline-group">
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" id="dsUsername">
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="dsPassword" autocomplete="off" data-lpignore="true" data-1p-ignore>
+      </div>
+    </div>
+    <div class="checkbox-group form-group">
+      <input type="checkbox" id="dsUseSsl">
+      <label for="dsUseSsl" style="margin:0">Use SSL (HTTPS)</label>
+    </div>
+    <div class="form-group">
+      <label>Destination Folder (optional)</label>
+      <input type="text" id="dsDestination" placeholder="/volume1/downloads">
+    </div>
+    <button class="btn-secondary" onclick="testClient('Download Station')">Test Connection</button>
+    <button class="btn-primary" onclick="saveDownloadStation(this)">Save Download Station</button>
+  </div>
+
+  <div class="card">
+    <h2>JDownloader</h2>
+    <div class="checkbox-group form-group">
+      <input type="checkbox" id="jdEnabled">
+      <label for="jdEnabled" style="margin:0">Enable JDownloader</label>
+      <span id="jdStatus"></span>
+    </div>
+
+    <div class="form-group">
+      <label>API Mode</label>
+      <select id="jdApiMode" style="width:100%;padding:10px;border:1px solid #333;border-radius:4px;background:#0f0f23;color:#fff;">
+        <option value="auto">Auto (Local first, then Remote)</option>
+        <option value="local">Local API only</option>
+        <option value="remote">MyJDownloader only</option>
+      </select>
+    </div>
+
+    <h3 style="font-size:14px;margin:15px 0 10px;color:#aaa;">Local API</h3>
+    <div class="inline-group">
+      <div class="form-group">
+        <label>Local Host</label>
+        <input type="text" id="jdLocalHost" placeholder="192.168.1.100">
+      </div>
+      <div class="form-group">
+        <label>Local Port</label>
+        <input type="number" id="jdLocalPort" value="3128">
+      </div>
+    </div>
+
+    <h3 style="font-size:14px;margin:15px 0 10px;color:#aaa;">MyJDownloader API (fallback)</h3>
+    <div class="inline-group">
+      <div class="form-group">
+        <label>Email</label>
+        <input type="text" id="jdEmail" placeholder="email@example.com">
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="jdPassword" autocomplete="off" data-lpignore="true" data-1p-ignore>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Device Name</label>
+      <input type="text" id="jdDeviceName" placeholder="JDownloader@MyPC">
+    </div>
+
+    <button class="btn-secondary" onclick="testClient('JDownloader')">Test Connection</button>
+    <button class="btn-primary" onclick="saveJDownloader(this)">Save JDownloader</button>
+  </div>
+
+  <div class="card">
+    <h2>aria2</h2>
+    <div class="checkbox-group form-group">
+      <input type="checkbox" id="aria2Enabled">
+      <label for="aria2Enabled" style="margin:0">Enable aria2</label>
+      <span id="aria2Status"></span>
+    </div>
+    <div class="inline-group">
+      <div class="form-group">
+        <label>Host</label>
+        <input type="text" id="aria2Host" placeholder="localhost">
+      </div>
+      <div class="form-group">
+        <label>Port</label>
+        <input type="number" id="aria2Port" value="6800">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Secret Token (optional)</label>
+      <input type="password" id="aria2Secret" autocomplete="off" data-lpignore="true" data-1p-ignore>
+    </div>
+    <div class="form-group">
+      <label>Download Directory (optional)</label>
+      <input type="text" id="aria2Dir" placeholder="/downloads">
+    </div>
+    <button class="btn-secondary" onclick="testClient('aria2')">Test Connection</button>
+    <button class="btn-primary" onclick="saveAria2(this)">Save aria2</button>
+  </div>
+
+  <script>
+    async function loadConfig() {
+      try {
+        const res = await fetch('/api/config');
+        const config = await res.json();
+
+        document.getElementById('blackholePath').value = config.blackholePath || '';
+        document.getElementById('processedPath').value = config.processedPath || '';
+        document.getElementById('scanInterval').value = config.scanInterval || 10;
+
+        // AllDebrid
+        document.getElementById('alldebridApiKey').value = config.alldebridApiKey || '';
+
+        // Download Station
+        document.getElementById('dsEnabled').checked = config.downloadStation?.enabled || false;
+        document.getElementById('dsHost').value = config.downloadStation?.host || '';
+        document.getElementById('dsPort').value = config.downloadStation?.port || 5000;
+        document.getElementById('dsUsername').value = config.downloadStation?.username || '';
+        document.getElementById('dsPassword').value = config.downloadStation?.password || '';
+        document.getElementById('dsUseSsl').checked = config.downloadStation?.useSsl || false;
+        document.getElementById('dsDestination').value = config.downloadStation?.destination || '';
+
+        // JDownloader
+        document.getElementById('jdEnabled').checked = config.jdownloader?.enabled || false;
+        document.getElementById('jdApiMode').value = config.jdownloader?.apiMode || 'auto';
+        document.getElementById('jdLocalHost').value = config.jdownloader?.localHost || '';
+        document.getElementById('jdLocalPort').value = config.jdownloader?.localPort || 3128;
+        document.getElementById('jdEmail').value = config.jdownloader?.email || '';
+        document.getElementById('jdPassword').value = config.jdownloader?.password || '';
+        document.getElementById('jdDeviceName').value = config.jdownloader?.deviceName || '';
+
+        // aria2
+        document.getElementById('aria2Enabled').checked = config.aria2?.enabled || false;
+        document.getElementById('aria2Host').value = config.aria2?.host || '';
+        document.getElementById('aria2Port').value = config.aria2?.port || 6800;
+        document.getElementById('aria2Secret').value = config.aria2?.secret || '';
+        document.getElementById('aria2Dir').value = config.aria2?.dir || '';
+      } catch (error) {
+        showMessage('Failed to load config: ' + error, 'error');
+      }
+    }
+
+    async function saveSection(sectionName, config, button) {
+      const originalText = button ? button.textContent : null;
+      if (button) {
+        button.disabled = true;
+        button.textContent = 'Saving...';
+      }
+
+      try {
+        const res = await fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(config),
+        });
+        const result = await res.json();
+
+        if (result.success) {
+          showMessage(sectionName + ' saved!', 'success');
+          if (button) {
+            button.textContent = '✓ Saved!';
+            button.style.background = '#00c853';
+            setTimeout(() => {
+              button.textContent = originalText;
+              button.style.background = '';
+              button.disabled = false;
+            }, 2000);
+          }
+        } else {
+          showMessage('Failed to save: ' + result.error, 'error');
+          if (button) {
+            button.textContent = '✗ Error';
+            button.style.background = '#ff5252';
+            setTimeout(() => {
+              button.textContent = originalText;
+              button.style.background = '';
+              button.disabled = false;
+            }, 2000);
+          }
+        }
+      } catch (error) {
+        showMessage('Failed to save: ' + error, 'error');
+        if (button) {
+          button.textContent = '✗ Error';
+          button.style.background = '#ff5252';
+          setTimeout(() => {
+            button.textContent = originalText;
+            button.style.background = '';
+            button.disabled = false;
+          }, 2000);
+        }
+      }
+    }
+
+    async function saveGeneralSettings(btn) {
+      await saveSection('General settings', {
+        blackholePath: document.getElementById('blackholePath').value,
+        processedPath: document.getElementById('processedPath').value,
+        scanInterval: parseInt(document.getElementById('scanInterval').value) || 10,
+      }, btn);
+    }
+
+    async function saveDownloadStation(btn) {
+      await saveSection('Download Station', {
+        downloadStation: {
+          enabled: document.getElementById('dsEnabled').checked,
+          host: document.getElementById('dsHost').value,
+          port: parseInt(document.getElementById('dsPort').value) || 5000,
+          username: document.getElementById('dsUsername').value,
+          password: document.getElementById('dsPassword').value,
+          useSsl: document.getElementById('dsUseSsl').checked,
+          destination: document.getElementById('dsDestination').value,
+        },
+      }, btn);
+    }
+
+    async function saveJDownloader(btn) {
+      await saveSection('JDownloader', {
+        jdownloader: {
+          enabled: document.getElementById('jdEnabled').checked,
+          apiMode: document.getElementById('jdApiMode').value,
+          localHost: document.getElementById('jdLocalHost').value,
+          localPort: parseInt(document.getElementById('jdLocalPort').value) || 3128,
+          email: document.getElementById('jdEmail').value,
+          password: document.getElementById('jdPassword').value,
+          deviceName: document.getElementById('jdDeviceName').value,
+        },
+      }, btn);
+    }
+
+    async function saveAria2(btn) {
+      await saveSection('aria2', {
+        aria2: {
+          enabled: document.getElementById('aria2Enabled').checked,
+          host: document.getElementById('aria2Host').value,
+          port: parseInt(document.getElementById('aria2Port').value) || 6800,
+          secret: document.getElementById('aria2Secret').value,
+          dir: document.getElementById('aria2Dir').value,
+        },
+      }, btn);
+    }
+
+    function getCurrentConfig() {
+      return {
+        blackholePath: document.getElementById('blackholePath').value,
+        processedPath: document.getElementById('processedPath').value,
+        scanInterval: parseInt(document.getElementById('scanInterval').value) || 10,
+        alldebridApiKey: document.getElementById('alldebridApiKey').value,
+        downloadStation: {
+          enabled: document.getElementById('dsEnabled').checked,
+          host: document.getElementById('dsHost').value,
+          port: parseInt(document.getElementById('dsPort').value) || 5000,
+          username: document.getElementById('dsUsername').value,
+          password: document.getElementById('dsPassword').value,
+          useSsl: document.getElementById('dsUseSsl').checked,
+          destination: document.getElementById('dsDestination').value,
+        },
+        jdownloader: {
+          enabled: document.getElementById('jdEnabled').checked,
+          apiMode: document.getElementById('jdApiMode').value,
+          localHost: document.getElementById('jdLocalHost').value,
+          localPort: parseInt(document.getElementById('jdLocalPort').value) || 3128,
+          email: document.getElementById('jdEmail').value,
+          password: document.getElementById('jdPassword').value,
+          deviceName: document.getElementById('jdDeviceName').value,
+        },
+        aria2: {
+          enabled: document.getElementById('aria2Enabled').checked,
+          host: document.getElementById('aria2Host').value,
+          port: parseInt(document.getElementById('aria2Port').value) || 6800,
+          secret: document.getElementById('aria2Secret').value,
+          dir: document.getElementById('aria2Dir').value,
+        },
+      };
+    }
+
+    async function testAllDebrid() {
+      document.getElementById('alldebridStatus').innerHTML = '<span class="status status-pending">Testing...</span>';
+
+      try {
+        const apiKey = document.getElementById('alldebridApiKey').value;
+        const res = await fetch('/api/alldebrid/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ alldebridApiKey: apiKey }),
+        });
+        const result = await res.json();
+
+        if (result.success) {
+          document.getElementById('alldebridStatus').innerHTML = '<span class="status status-ok">Connected</span>';
+        } else {
+          document.getElementById('alldebridStatus').innerHTML = '<span class="status status-error">Failed</span>';
+          console.error('AllDebrid test failed:', result.error);
+        }
+      } catch (error) {
+        document.getElementById('alldebridStatus').innerHTML = '<span class="status status-error">Error</span>';
+        console.error('AllDebrid test error:', error);
+      }
+    }
+
+    async function saveAllDebridKey(btn) {
+      const apiKey = document.getElementById('alldebridApiKey').value;
+      if (!apiKey || apiKey === '********') {
+        showMessage('Please enter a valid API key', 'error');
+        return;
+      }
+
+      const originalText = btn ? btn.textContent : null;
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+      }
+
+      try {
+        const res = await fetch('/api/config/alldebrid', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ alldebridApiKey: apiKey }),
+        });
+        const result = await res.json();
+
+        if (result.success) {
+          showMessage('AllDebrid API key saved!', 'success');
+          if (btn) {
+            btn.textContent = '✓ Saved!';
+            btn.style.background = '#00c853';
+            setTimeout(() => {
+              btn.textContent = originalText;
+              btn.style.background = '';
+              btn.disabled = false;
+            }, 2000);
+          }
+        } else {
+          showMessage('Failed to save: ' + result.error, 'error');
+          if (btn) {
+            btn.textContent = '✗ Error';
+            btn.style.background = '#ff5252';
+            setTimeout(() => {
+              btn.textContent = originalText;
+              btn.style.background = '';
+              btn.disabled = false;
+            }, 2000);
+          }
+        }
+      } catch (error) {
+        showMessage('Failed to save API key: ' + error, 'error');
+        if (btn) {
+          btn.textContent = '✗ Error';
+          btn.style.background = '#ff5252';
+          setTimeout(() => {
+            btn.textContent = originalText;
+            btn.style.background = '';
+            btn.disabled = false;
+          }, 2000);
+        }
+      }
+    }
+
+    async function testClient(clientName) {
+      const statusId = clientName === 'Download Station' ? 'dsStatus' :
+                       clientName === 'JDownloader' ? 'jdStatus' : 'aria2Status';
+
+      document.getElementById(statusId).innerHTML = '<span class="status status-pending">Testing...</span>';
+
+      try {
+        // Send current form values for testing
+        const config = getCurrentConfig();
+        const res = await fetch(`/api/clients/${encodeURIComponent(clientName)}/test`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(config),
+        });
+        const result = await res.json();
+
+        if (result.success) {
+          document.getElementById(statusId).innerHTML = '<span class="status status-ok">Connected</span>';
+        } else {
+          document.getElementById(statusId).innerHTML = '<span class="status status-error">Failed</span>';
+          console.error('Test failed:', result.message || result.error);
+        }
+      } catch (error) {
+        document.getElementById(statusId).innerHTML = '<span class="status status-error">Error</span>';
+        console.error('Test error:', error);
+      }
+    }
+
+    function showMessage(text, type) {
+      const el = document.getElementById('message');
+      el.className = 'message message-' + type;
+      el.textContent = text;
+      setTimeout(() => el.textContent = '', 5000);
+    }
+
+    loadConfig();
+  </script>
+</body>
+</html>

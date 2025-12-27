@@ -23,12 +23,14 @@
   "license": "MIT",
   "dependencies": {
     "axios": "^1.7.9",
+    "bencode": "^4.0.0",
     "cheerio": "^1.0.0",
     "dotenv": "^16.4.7",
     "fast-xml-parser": "^4.5.1",
     "fastify": "^5.2.1"
   },
   "devDependencies": {
+    "@types/bencode": "^2.0.4",
     "@types/node": "^22.10.2",
     "pino-pretty": "^13.0.0",
     "tsx": "^4.19.2",
