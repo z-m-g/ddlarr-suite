@@ -2,7 +2,7 @@ import * as cheerio from 'cheerio';
 import { BaseScraper, parseQuality, parseLanguage, parseSize } from './base.js';
 import { ScraperResult, SearchParams, ContentType } from '../models/torznab.js';
 import { fetchHtml, encodeSearchQuery } from '../utils/http.js';
-import { isNameMatch, extractName } from '../utils/text.js';
+import { isNameMatch, extractName, generateAccentVariants } from '../utils/text.js';
 
 type ZTContentType = 'films' | 'series' | 'mangas';
 
@@ -60,21 +60,46 @@ export class ZoneTelechargerScraper implements BaseScraper {
 
     const ztType = CONTENT_TYPE_MAP[contentType];
 
-    // Construit le terme de recherche
-    let searchTerm = params.q;
-    if (params.season) {
-      searchTerm += ` Saison ${params.season}`;
-    }
-
-    // URL de recherche Zone-Téléchargement
-    const baseSearchUrl = `${this.baseUrl}/?search=${encodeSearchQuery(searchTerm)}&p=${ztType}`;
-
-    console.log(`[ZoneTelecharger] Searching ${contentType}: ${baseSearchUrl}`);
+    // Génère les variantes avec accents français
+    const searchVariants = generateAccentVariants(params.q, 5);
+    console.log(`[ZoneTelecharger] Search variants for "${params.q}":`, searchVariants);
 
     try {
-      // Récupère toutes les pages de résultats
-      const allSearchResults = await this.fetchAllPages(baseSearchUrl, contentType, params);
-      console.log(`[ZoneTelecharger] Found ${allSearchResults.length} total search results across all pages`);
+      // Collecte tous les résultats de recherche pour toutes les variantes
+      const allSearchResults: SearchResult[] = [];
+      const seenPageUrls = new Set<string>();
+
+      // Recherche pour chaque variante (en parallèle)
+      const variantPromises = searchVariants.map(async (variant) => {
+        let searchTerm = variant;
+        if (params.season) {
+          searchTerm += ` Saison ${params.season}`;
+        }
+
+        const baseSearchUrl = `${this.baseUrl}/?search=${encodeSearchQuery(searchTerm)}&p=${ztType}`;
+        console.log(`[ZoneTelecharger] Searching ${contentType} with variant "${variant}": ${baseSearchUrl}`);
+
+        try {
+          return await this.fetchAllPages(baseSearchUrl, contentType, params);
+        } catch (error) {
+          console.error(`[ZoneTelecharger] Error searching variant "${variant}":`, error);
+          return [];
+        }
+      });
+
+      const variantResults = await Promise.all(variantPromises);
+
+      // Déduplique par URL de page de détail
+      for (const results of variantResults) {
+        for (const result of results) {
+          if (!seenPageUrls.has(result.pageUrl)) {
+            seenPageUrls.add(result.pageUrl);
+            allSearchResults.push(result);
+          }
+        }
+      }
+
+      console.log(`[ZoneTelecharger] Found ${allSearchResults.length} unique search results across all variants`);
 
       if (allSearchResults.length === 0) {
         return [];

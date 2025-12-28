@@ -1,6 +1,83 @@
 import { ContentType } from '../models/torznab.js';
 
 /**
+ * Mapping des voyelles vers leurs versions accentuées françaises
+ */
+const ACCENT_VARIANTS: Record<string, string[]> = {
+  'e': ['é', 'è', 'ê'],
+  'a': ['à', 'â'],
+  'i': ['î', 'ï'],
+  'o': ['ô'],
+  'u': ['ù', 'û'],
+  'c': ['ç'],
+};
+
+/**
+ * Génère des variantes d'un terme de recherche avec des accents français
+ * Approche pragmatique : on génère quelques variantes ciblées, pas toutes les combinaisons
+ * @param query Le terme de recherche original (sans accents)
+ * @param maxVariants Nombre maximum de variantes à générer (défaut: 5)
+ * @returns Liste des variantes incluant le terme original
+ */
+export function generateAccentVariants(query: string, maxVariants: number = 5): string[] {
+  const variants = new Set<string>();
+  variants.add(query); // Toujours inclure l'original
+
+  const lowerQuery = query.toLowerCase();
+  const words = lowerQuery.split(/\s+/);
+
+  // Pour chaque mot, on génère des variantes avec les accents les plus courants
+  for (let wordIdx = 0; wordIdx < words.length && variants.size < maxVariants + 1; wordIdx++) {
+    const word = words[wordIdx];
+
+    // Ignore les mots trop courts (articles, prépositions)
+    if (word.length < 3) continue;
+
+    // Trouve les positions où on peut ajouter des accents
+    for (let charIdx = 0; charIdx < word.length && variants.size < maxVariants + 1; charIdx++) {
+      const char = word[charIdx];
+      const accentedVersions = ACCENT_VARIANTS[char];
+
+      if (accentedVersions) {
+        // Génère une variante pour chaque accent possible
+        for (const accentedChar of accentedVersions) {
+          if (variants.size >= maxVariants + 1) break;
+
+          // Reconstruit le mot avec l'accent
+          const newWord = word.substring(0, charIdx) + accentedChar + word.substring(charIdx + 1);
+          // Reconstruit la requête complète
+          const newWords = [...words];
+          newWords[wordIdx] = newWord;
+          variants.add(newWords.join(' '));
+        }
+      }
+    }
+  }
+
+  // Variantes spécifiques pour les patterns français courants
+  const commonPatterns: Array<{ pattern: RegExp; replacement: string }> = [
+    { pattern: /\bthe\b/gi, replacement: 'thé' },
+    { pattern: /\ble\b/gi, replacement: 'lé' },
+    { pattern: /\bla\b/gi, replacement: 'là' },
+    { pattern: /\bou\b/gi, replacement: 'où' },
+    { pattern: /^a\s/i, replacement: 'à ' },
+    { pattern: /\bet\s/gi, replacement: 'ét ' },
+    { pattern: /ere\b/gi, replacement: 'ère' },
+    { pattern: /ete\b/gi, replacement: 'été' },
+    { pattern: /ee\b/gi, replacement: 'ée' },
+  ];
+
+  for (const { pattern, replacement } of commonPatterns) {
+    if (variants.size >= maxVariants + 1) break;
+    if (pattern.test(lowerQuery)) {
+      variants.add(lowerQuery.replace(pattern, replacement));
+    }
+  }
+
+  return Array.from(variants).slice(0, maxVariants + 1);
+}
+
+/**
  * Retire les textes entre crochets [VF], [1080p], etc.
  */
 export function removeBrackets(str: string): string {
