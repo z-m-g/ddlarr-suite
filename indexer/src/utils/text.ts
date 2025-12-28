@@ -23,6 +23,15 @@ export function generateAccentVariants(query: string, maxVariants: number = 5): 
   const variants = new Set<string>();
   variants.add(query); // Toujours inclure l'original
 
+  // Si le texte original contient déjà des accents, c'est probablement un titre français
+  // Sinon (titre anglais), on limite la génération de variantes accentuées
+  const hasAccents = /[àâäæçéèêëïîôùûüÿœ]/i.test(query);
+
+  // Pour les titres anglais, on retourne juste l'original sans générer de variantes accentuées
+  if (!hasAccents) {
+    return [query];
+  }
+
   const lowerQuery = query.toLowerCase();
   const words = lowerQuery.split(/\s+/);
 

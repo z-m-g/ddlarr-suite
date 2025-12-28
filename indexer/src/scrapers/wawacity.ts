@@ -82,6 +82,13 @@ export class WawacityScraper implements BaseScraper {
           searchTerm += ` Saison ${params.season}`;
         }
 
+        // WawaCity limite: max 32 caractères (espaces inclus)
+        // Si la limite est dépassée, la liste complète des films est renvoyée au lieu des résultats de recherche
+        if (searchTerm.length > 32) {
+          searchTerm = searchTerm.substring(0, 32).trim();
+          console.log(`[WawaCity] Truncated search term to 32 chars: "${searchTerm}"`);
+        }
+
         const baseSearchUrl = `${this.baseUrl}/?p=${wawaType}&linkType=hasDownloadLink&search=${encodeSearchQuery(searchTerm)}`;
         console.log(`[WawaCity] Searching ${contentType} with variant "${variant}": ${baseSearchUrl}`);
 

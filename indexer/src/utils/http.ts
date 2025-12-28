@@ -90,5 +90,7 @@ export async function fetchJson<T>(url: string, configOpts?: AxiosRequestConfig)
 }
 
 export function encodeSearchQuery(query: string): string {
-  return encodeURIComponent(query.trim().toLowerCase());
+  // Préserver la casse et utiliser un encodage simple des espaces en signes plus.
+  // La plupart des sites DDL fonctionnent mieux avec un encodage simple.
+  return query.trim().replace(/\s+/g, '+');
 }

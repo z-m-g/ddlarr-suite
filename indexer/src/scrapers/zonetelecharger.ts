@@ -76,6 +76,13 @@ export class ZoneTelechargerScraper implements BaseScraper {
           searchTerm += ` Saison ${params.season}`;
         }
 
+        // Zone-Téléchargement limit: max 36 caractères (espaces inclus)
+        // Si la limite est dépassée, la liste complète des films est renvoyée au lieu des résultats de recherche
+        if (searchTerm.length > 36) {
+          searchTerm = searchTerm.substring(0, 36).trim();
+          console.log(`[ZoneTelecharger] Truncated search term to 36 chars: "${searchTerm}"`);
+        }
+
         const baseSearchUrl = `${this.baseUrl}/?search=${encodeSearchQuery(searchTerm)}&p=${ztType}`;
         console.log(`[ZoneTelecharger] Searching ${contentType} with variant "${variant}": ${baseSearchUrl}`);
 
