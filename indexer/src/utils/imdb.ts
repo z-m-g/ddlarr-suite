@@ -2,6 +2,9 @@ import { fetchJson } from './http.js';
 
 const IMDB_API_BASE = 'https://api.imdbapi.dev';
 
+// Cache for IMDB titles (results never change, so no expiration needed)
+const imdbTitlesCache = new Map<string, ImdbTitles>();
+
 interface ImdbTitle {
   id: string;
   type: string;
@@ -23,6 +26,11 @@ interface ImdbAka {
 
 interface ImdbAkasResponse {
   akas: ImdbAka[];
+}
+
+export interface ImdbTitles {
+  originalTitle: string | null;
+  frenchTitle: string | null;
 }
 
 /**
@@ -81,23 +89,35 @@ export async function fetchFrenchTitle(imdbId: string): Promise<string | null> {
   }
 }
 
-export interface ImdbTitles {
-  originalTitle: string | null;
-  frenchTitle: string | null;
-}
-
 /**
  * Fetch both original and French titles from IMDB API
- * Returns unique titles to use for searching
+ * Results are cached since IMDB data never changes
  */
 export async function fetchImdbTitles(imdbId: string): Promise<ImdbTitles> {
+  const normalizedId = normalizeImdbId(imdbId);
+
+  // Check cache first
+  const cached = imdbTitlesCache.get(normalizedId);
+  if (cached) {
+    console.log(`[IMDB] Cache hit for ${normalizedId}`);
+    return cached;
+  }
+
   // Fetch both in parallel
   const [originalTitle, frenchTitle] = await Promise.all([
     fetchOriginalTitle(imdbId),
     fetchFrenchTitle(imdbId),
   ]);
 
-  return { originalTitle, frenchTitle };
+  const result: ImdbTitles = { originalTitle, frenchTitle };
+
+  // Only cache successful results (at least one title found)
+  if (originalTitle || frenchTitle) {
+    imdbTitlesCache.set(normalizedId, result);
+    console.log(`[IMDB] Cached titles for ${normalizedId}`);
+  }
+
+  return result;
 }
 
 /**
