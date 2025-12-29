@@ -101,9 +101,11 @@ export function loadConfig(): Config {
       }
 
       // Deep merge for nested objects
+      // Note: dlprotectResolveAt always comes from env var, never from saved config
       currentConfig = {
         ...defaultConfig,
         ...savedConfig,
+        dlprotectResolveAt: defaultConfig.dlprotectResolveAt, // Always use env var
         downloadStation: { ...defaultConfig.downloadStation, ...savedConfig.downloadStation },
         jdownloader: { ...defaultConfig.jdownloader, ...savedConfig.jdownloader },
         aria2: { ...defaultConfig.aria2, ...savedConfig.aria2 },
@@ -127,7 +129,9 @@ export function saveConfig(config: Config): void {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+    // Don't save dlprotectResolveAt - it always comes from env var
+    const { dlprotectResolveAt, ...configToSave } = config;
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(configToSave, null, 2));
     currentConfig = config;
     console.log('[Config] Saved to file:', CONFIG_PATH);
   } catch (error) {

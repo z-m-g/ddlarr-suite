@@ -78,6 +78,8 @@ async function processFile(filePath: string): Promise<void> {
 
   console.log(`[Watcher] Found link: ${link}`);
   console.log(`[Watcher] Filename: ${filename}`);
+  console.log(`[Watcher] DL-Protect resolve mode: ${config.dlprotectResolveAt}`);
+  console.log(`[Watcher] Is DL-Protect link: ${isDlProtectLink(link)}`);
 
   // Resolve dl-protect links if configured to resolve in downloader
   if (config.dlprotectResolveAt === 'downloader' && isDlProtectLink(link)) {
