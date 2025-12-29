@@ -98,7 +98,7 @@ export function contentTypeToCategory(contentType: ContentType, quality?: string
   if (contentType === 'movie') {
     if (isUHD) return 2045;
     if (isHD) return 2040;
-    return 2000;
+    return 2030; // Default to SD when quality unknown
   }
 
   if (contentType === 'series') {
