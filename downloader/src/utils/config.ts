@@ -44,11 +44,13 @@ export interface PyLoadConfig {
 export interface CurlConfig {
   enabled: boolean;
   destinationPath: string; // Download destination path
+  tempPath?: string; // Temp directory for downloads in progress
 }
 
 export interface WgetConfig {
   enabled: boolean;
   destinationPath: string; // Download destination path
+  tempPath?: string; // Temp directory for downloads in progress
 }
 
 // Debrid service configs
@@ -146,10 +148,12 @@ const defaultConfig: Config = {
   curl: {
     enabled: process.env.CURL_ENABLED === 'true',
     destinationPath: process.env.CURL_DESTINATION || '/downloads',
+    tempPath: process.env.CURL_TEMP_PATH || '/tmp',
   },
   wget: {
     enabled: process.env.WGET_ENABLED === 'true',
     destinationPath: process.env.WGET_DESTINATION || '/downloads',
+    tempPath: process.env.WGET_TEMP_PATH || '/tmp',
   },
 };
 

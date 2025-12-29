@@ -1,5 +1,9 @@
 FROM node:20-alpine
 
+# Set UTF-8 locale
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+
 # Install curl and wget for direct download clients
 RUN apk add --no-cache curl wget
 

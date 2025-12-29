@@ -110,13 +110,13 @@ export class WgetClient implements DownloadClient {
       }
     }
 
-    // Use .tmp subdirectory in destination to avoid cross-device rename issues
-    const tempDir = path.join(config.destinationPath, '.tmp');
+    // Use temp directory for downloads in progress (outside Radarr scan path)
+    const tempDir = config.tempPath || '/tmp';
     if (!fs.existsSync(tempDir)) {
       fs.mkdirSync(tempDir, { recursive: true });
     }
-    const tempPath = path.join(tempDir, `.wget_${Date.now()}_${finalFilename}`);
     const finalPath = path.join(config.destinationPath, finalFilename);
+    const tempPath = path.join(tempDir, `wget_${Date.now()}_${finalFilename}`);
 
     console.log(`[wget] Downloading: ${url}`);
     console.log(`[wget] Temp path: ${tempPath}`);
@@ -148,7 +148,9 @@ export class WgetClient implements DownloadClient {
         '--progress=bar:force',
         '-O', tempPath,
         url,
-      ]);
+      ], {
+        env: { ...process.env, LANG: 'en_US.UTF-8', LC_ALL: 'en_US.UTF-8' },
+      });
 
       // Store process reference for stop functionality
       progress.process = proc;
@@ -192,23 +194,28 @@ export class WgetClient implements DownloadClient {
             console.log(`[wget] Download complete: ${finalPath}`);
             progress.progress = 100;
             progress.status = 'completed';
-
-            // Remove from active downloads after a delay
             setTimeout(() => activeDownloads.delete(downloadId), 60000);
             resolve(true);
           } catch (moveError: any) {
-            console.error(`[wget] Error moving file: ${moveError.message}`);
             // Try copy + delete if rename fails (cross-device)
-            try {
-              fs.copyFileSync(tempPath, finalPath);
-              fs.unlinkSync(tempPath);
-              console.log(`[wget] Download complete (copy mode): ${finalPath}`);
-              progress.progress = 100;
-              progress.status = 'completed';
-              setTimeout(() => activeDownloads.delete(downloadId), 60000);
-              resolve(true);
-            } catch (copyError: any) {
-              console.error(`[wget] Error copying file: ${copyError.message}`);
+            if (moveError.code === 'EXDEV') {
+              try {
+                console.log(`[wget] Cross-device move, using copy+delete`);
+                fs.copyFileSync(tempPath, finalPath);
+                fs.unlinkSync(tempPath);
+                console.log(`[wget] Download complete: ${finalPath}`);
+                progress.progress = 100;
+                progress.status = 'completed';
+                setTimeout(() => activeDownloads.delete(downloadId), 60000);
+                resolve(true);
+              } catch (copyError: any) {
+                console.error(`[wget] Error copying file: ${copyError.message}`);
+                progress.status = 'failed';
+                setTimeout(() => activeDownloads.delete(downloadId), 60000);
+                resolve(false);
+              }
+            } else {
+              console.error(`[wget] Error moving file: ${moveError.message}`);
               progress.status = 'failed';
               setTimeout(() => activeDownloads.delete(downloadId), 60000);
               resolve(false);
