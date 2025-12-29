@@ -121,14 +121,11 @@ export class CurlClient implements DownloadClient {
       // curl with progress output
       // -L: follow redirects
       // -o: output file
-      // --progress-bar: show progress
-      // -#: progress bar mode (easier to parse)
+      // Default progress shows: % Total % Received Speed Time etc
       const proc = spawn('curl', [
         '-L',
         '-o', tempPath,
-        '-#',
         '--fail',
-        '-w', '%{size_download} %{speed_download}',
         url,
       ]);
 
@@ -136,28 +133,35 @@ export class CurlClient implements DownloadClient {
 
       proc.stderr.on('data', (data: Buffer) => {
         const output = data.toString();
-        // Parse progress from curl's progress bar output
-        // Format: ###                                                          5.2%
-        // Match all percentages and take the highest valid one
-        const progressMatches = output.matchAll(/(\d+\.?\d*)%/g);
+
+        // Parse progress from curl's default output
+        // Format:  23  500M   23  115M    0     0  10.5M      0  0:00:47  0:00:11  0:00:36 11.2M
+        // The last value is the current speed
+
+        // Match percentage (first number at start of line or after spaces)
+        const progressMatches = output.matchAll(/^\s*(\d+)\s/gm);
         for (const match of progressMatches) {
-          const newProgress = parseFloat(match[1]);
-          // Only update if progress increases (avoid parsing artifacts)
+          const newProgress = parseInt(match[1], 10);
           if (newProgress > lastProgress && newProgress <= 100) {
             lastProgress = newProgress;
             progress.progress = lastProgress;
-            console.log(`[curl] Progress: ${lastProgress.toFixed(1)}%`);
           }
         }
-      });
 
-      proc.stdout.on('data', (data: Buffer) => {
-        const output = data.toString().trim();
-        // Parse final stats: size speed
-        const parts = output.split(' ');
-        if (parts.length >= 2) {
-          progress.downloaded = this.formatBytes(parseInt(parts[0], 10));
-          progress.speed = this.formatBytes(parseFloat(parts[1])) + '/s';
+        // Match speed (e.g., "10.5M" or "500k" at end of line)
+        const speedMatch = output.match(/(\d+\.?\d*[kMGT]?)\s*$/m);
+        if (speedMatch) {
+          progress.speed = speedMatch[1] + '/s';
+        }
+
+        // Also try to match speed in format like "10.5M      0"
+        const speedMatch2 = output.match(/\s(\d+\.?\d*[kMGT])\s+\d+\s+[\d:]+/);
+        if (speedMatch2) {
+          progress.speed = speedMatch2[1] + '/s';
+        }
+
+        if (lastProgress > 0) {
+          console.log(`[curl] Progress: ${lastProgress}% - Speed: ${progress.speed}`);
         }
       });
 
