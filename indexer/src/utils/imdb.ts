@@ -81,6 +81,7 @@ export function normalizeImdbId(imdbId: string): string {
 
 /**
  * Fetch original title from IMDB API
+ * Falls back to primaryTitle if originalTitle is not available
  */
 export async function fetchOriginalTitle(imdbId: string): Promise<string | null> {
   const normalizedId = normalizeImdbId(imdbId);
@@ -89,8 +90,9 @@ export async function fetchOriginalTitle(imdbId: string): Promise<string | null>
   try {
     console.log(`[IMDB] Fetching title info for ${normalizedId}`);
     const data = await fetchJson<ImdbTitle>(url);
-    console.log(`[IMDB] Original title: "${data.originalTitle}"`);
-    return data.originalTitle || null;
+    const title = data.originalTitle || data.primaryTitle || null;
+    console.log(`[IMDB] Original title: "${title}"${!data.originalTitle && data.primaryTitle ? ' (from primaryTitle)' : ''}`);
+    return title;
   } catch (error) {
     console.error(`[IMDB] Error fetching title:`, error);
     return null;
