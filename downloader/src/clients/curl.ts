@@ -135,29 +135,31 @@ export class CurlClient implements DownloadClient {
         const output = data.toString();
 
         // Parse progress from curl's default output
-        // Format:  23  500M   23  115M    0     0  10.5M      0  0:00:47  0:00:11  0:00:36 11.2M
-        // The last value is the current speed
+        // Format:  5  500M    5 26.3M    0     0  10.5M      0  0:00:47  0:00:02  0:00:45 10.5M
+        // Columns: % Total % Recv % Xferd AvgDl AvgUp TimeTotal TimeSpent TimeLeft CurrentSpeed
+        // Last column is always current speed
 
-        // Match percentage (first number at start of line or after spaces)
-        const progressMatches = output.matchAll(/^\s*(\d+)\s/gm);
-        for (const match of progressMatches) {
-          const newProgress = parseInt(match[1], 10);
-          if (newProgress > lastProgress && newProgress <= 100) {
-            lastProgress = newProgress;
-            progress.progress = lastProgress;
+        const lines = output.split('\n');
+        for (const line of lines) {
+          // Skip header lines and empty lines
+          if (!line.trim() || line.includes('Total') || line.includes('Dload')) continue;
+
+          // Split by whitespace
+          const parts = line.trim().split(/\s+/);
+          if (parts.length >= 12) {
+            // First column is percentage
+            const newProgress = parseInt(parts[0], 10);
+            if (!isNaN(newProgress) && newProgress > lastProgress && newProgress <= 100) {
+              lastProgress = newProgress;
+              progress.progress = lastProgress;
+            }
+
+            // Last column is current speed (e.g., "10.5M" or "0")
+            const speedStr = parts[parts.length - 1];
+            if (speedStr && speedStr !== '0') {
+              progress.speed = speedStr + '/s';
+            }
           }
-        }
-
-        // Match speed (e.g., "10.5M" or "500k" at end of line)
-        const speedMatch = output.match(/(\d+\.?\d*[kMGT]?)\s*$/m);
-        if (speedMatch) {
-          progress.speed = speedMatch[1] + '/s';
-        }
-
-        // Also try to match speed in format like "10.5M      0"
-        const speedMatch2 = output.match(/\s(\d+\.?\d*[kMGT])\s+\d+\s+[\d:]+/);
-        if (speedMatch2) {
-          progress.speed = speedMatch2[1] + '/s';
         }
 
         if (lastProgress > 0) {
