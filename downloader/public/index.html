@@ -116,15 +116,48 @@
   </div>
 
   <div class="card">
-    <h2>AllDebrid</h2>
-    <p style="color:#888;font-size:13px">Optional: Debrid links before sending to download clients for faster downloads.</p>
+    <h2>Debrid Services</h2>
+    <p style="color:#888;font-size:13px">Optional: Debrid links before sending to download clients. Multiple services can be enabled - if one fails, the next is tried.</p>
+
+    <h3 style="font-size:14px;margin:15px 0 10px;color:#aaa;">AllDebrid</h3>
+    <div class="checkbox-group form-group">
+      <input type="checkbox" id="alldebridEnabled">
+      <label for="alldebridEnabled" style="margin:0">Enable AllDebrid</label>
+      <span id="alldebridStatus"></span>
+    </div>
     <div class="form-group">
       <label>API Key</label>
       <input type="password" id="alldebridApiKey" placeholder="Enter your AllDebrid API key" autocomplete="off" data-lpignore="true" data-1p-ignore>
     </div>
-    <button class="btn-secondary" onclick="testAllDebrid()">Test Connection</button>
-    <button class="btn-primary" onclick="saveAllDebridKey(this)">Save API Key</button>
-    <span id="alldebridStatus"></span>
+    <button class="btn-secondary" onclick="testDebrid('AllDebrid')">Test</button>
+
+    <h3 style="font-size:14px;margin:20px 0 10px;color:#aaa;">Real-Debrid</h3>
+    <div class="checkbox-group form-group">
+      <input type="checkbox" id="realdebridEnabled">
+      <label for="realdebridEnabled" style="margin:0">Enable Real-Debrid</label>
+      <span id="realdebridStatus"></span>
+    </div>
+    <div class="form-group">
+      <label>API Key</label>
+      <input type="password" id="realdebridApiKey" placeholder="Enter your Real-Debrid API key" autocomplete="off" data-lpignore="true" data-1p-ignore>
+    </div>
+    <button class="btn-secondary" onclick="testDebrid('Real-Debrid')">Test</button>
+
+    <h3 style="font-size:14px;margin:20px 0 10px;color:#aaa;">Premiumize</h3>
+    <div class="checkbox-group form-group">
+      <input type="checkbox" id="premiumizeEnabled">
+      <label for="premiumizeEnabled" style="margin:0">Enable Premiumize</label>
+      <span id="premiumizeStatus"></span>
+    </div>
+    <div class="form-group">
+      <label>API Key</label>
+      <input type="password" id="premiumizeApiKey" placeholder="Enter your Premiumize API key" autocomplete="off" data-lpignore="true" data-1p-ignore>
+    </div>
+    <button class="btn-secondary" onclick="testDebrid('Premiumize')">Test</button>
+
+    <div style="margin-top:20px;">
+      <button class="btn-primary" onclick="saveDebrid(this)">Save Debrid Settings</button>
+    </div>
   </div>
 
   <div class="card">
@@ -244,6 +277,58 @@
     <button class="btn-primary" onclick="saveAria2(this)">Save aria2</button>
   </div>
 
+  <div class="card">
+    <h2>pyLoad</h2>
+    <div class="checkbox-group form-group">
+      <input type="checkbox" id="pyloadEnabled">
+      <label for="pyloadEnabled" style="margin:0">Enable pyLoad</label>
+      <span id="pyloadStatus"></span>
+    </div>
+    <div class="inline-group">
+      <div class="form-group">
+        <label>Host</label>
+        <input type="text" id="pyloadHost" placeholder="localhost">
+      </div>
+      <div class="form-group">
+        <label>Port</label>
+        <input type="number" id="pyloadPort" value="8000">
+      </div>
+    </div>
+    <div class="inline-group">
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" id="pyloadUsername">
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="pyloadPassword" autocomplete="off" data-lpignore="true" data-1p-ignore>
+      </div>
+    </div>
+    <div class="checkbox-group form-group">
+      <input type="checkbox" id="pyloadUseSsl">
+      <label for="pyloadUseSsl" style="margin:0">Use SSL (HTTPS)</label>
+    </div>
+    <button class="btn-secondary" onclick="testClient('pyLoad')">Test Connection</button>
+    <button class="btn-primary" onclick="savePyload(this)">Save pyLoad</button>
+  </div>
+
+  <div class="card">
+    <h2>Direct Download (curl/wget)</h2>
+    <p style="color:#888;font-size:13px">Download files directly to the /downloads volume using curl or wget.</p>
+
+    <div class="checkbox-group form-group">
+      <input type="checkbox" id="curlEnabled">
+      <label for="curlEnabled" style="margin:0">Enable curl</label>
+    </div>
+
+    <div class="checkbox-group form-group">
+      <input type="checkbox" id="wgetEnabled">
+      <label for="wgetEnabled" style="margin:0">Enable wget</label>
+    </div>
+
+    <button class="btn-primary" onclick="saveDirectDownload(this)">Save Direct Download Settings</button>
+  </div>
+
   <script>
     async function loadConfig() {
       try {
@@ -254,8 +339,13 @@
         document.getElementById('processedPath').value = config.processedPath || '';
         document.getElementById('scanInterval').value = config.scanInterval || 10;
 
-        // AllDebrid
-        document.getElementById('alldebridApiKey').value = config.alldebridApiKey || '';
+        // Debrid Services
+        document.getElementById('alldebridEnabled').checked = config.debrid?.alldebrid?.enabled || false;
+        document.getElementById('alldebridApiKey').value = config.debrid?.alldebrid?.apiKey || '';
+        document.getElementById('realdebridEnabled').checked = config.debrid?.realdebrid?.enabled || false;
+        document.getElementById('realdebridApiKey').value = config.debrid?.realdebrid?.apiKey || '';
+        document.getElementById('premiumizeEnabled').checked = config.debrid?.premiumize?.enabled || false;
+        document.getElementById('premiumizeApiKey').value = config.debrid?.premiumize?.apiKey || '';
 
         // Download Station
         document.getElementById('dsEnabled').checked = config.downloadStation?.enabled || false;

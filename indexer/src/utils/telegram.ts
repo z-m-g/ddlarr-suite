@@ -8,7 +8,7 @@ const DEFAULT_TELEGRAM_CHANNELS = {
 
 // Cache for fetched URLs (to avoid fetching on every request)
 const urlCache: Record<string, { url: string; fetchedAt: number }> = {};
-const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+const CACHE_TTL = 60 * 60 * 1000; // 1 hour in milliseconds
 
 /**
  * Extract site URL from Telegram channel page

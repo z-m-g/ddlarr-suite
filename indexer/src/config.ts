@@ -65,6 +65,30 @@ export function getSiteUrl(site: SiteType): string {
 }
 
 /**
+ * Refresh site URLs from Telegram (for sites not configured via env)
+ */
+async function refreshSiteUrls(): Promise<void> {
+  const sites: SiteType[] = ['wawacity', 'zonetelecharger'];
+
+  for (const site of sites) {
+    // Only refresh URLs that come from Telegram (not env vars)
+    if (!config.sites[site]) {
+      const url = await getSiteUrlFromTelegram(site, config.telegram[site]);
+      if (url && url !== resolvedSiteUrls[site]) {
+        console.log(`[Config] ${site} URL updated: ${resolvedSiteUrls[site]} -> ${url}`);
+        resolvedSiteUrls[site] = url;
+      }
+    }
+  }
+}
+
+// Refresh site URLs every hour
+setInterval(() => {
+  console.log('[Config] Refreshing site URLs from Telegram...');
+  refreshSiteUrls().catch(err => console.error('[Config] Error refreshing URLs:', err));
+}, 60 * 60 * 1000); // 1 hour
+
+/**
  * Check if site is configured (has a URL either from env or resolved from Telegram)
  */
 export function isSiteConfigured(site: SiteType): boolean {

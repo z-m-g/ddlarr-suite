@@ -11,10 +11,20 @@ interface CacheEntry {
 
 const htmlCache = new Map<string, CacheEntry>();
 const CACHE_TTL = 3 * 24 * 60 * 60 * 1000; // 3 jours
+const TELEGRAM_CACHE_TTL = 60 * 60 * 1000; // 1 heure pour t.me
+
+function getCacheTTL(url: string): number {
+  // Short TTL for Telegram URLs (site URLs can change)
+  if (url.includes('t.me/')) {
+    return TELEGRAM_CACHE_TTL;
+  }
+  return CACHE_TTL;
+}
 
 function getCachedHtml(url: string): string | null {
   const entry = htmlCache.get(url);
-  if (entry && Date.now() - entry.timestamp < CACHE_TTL) {
+  const ttl = getCacheTTL(url);
+  if (entry && Date.now() - entry.timestamp < ttl) {
     console.log(`[Cache] HIT for ${url}`);
     return entry.html;
   }
