@@ -9,6 +9,7 @@ export interface BaseScraper {
   searchSeries(params: SearchParams): Promise<ScraperResult[]>;
   searchAnime?(params: SearchParams): Promise<ScraperResult[]>;
   searchEbooks?(params: SearchParams): Promise<ScraperResult[]>;
+  getLatest?(contentType: ContentType, limit?: number): Promise<ScraperResult[]>;
 }
 
 export function parseQuality(title: string): string | undefined {

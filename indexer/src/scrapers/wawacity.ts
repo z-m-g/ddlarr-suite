@@ -71,6 +71,82 @@ export class WawacityScraper implements BaseScraper {
     return this.searchByType(params, 'ebook');
   }
 
+  /**
+   * Get latest releases for a content type (RSS feed style)
+   */
+  async getLatest(contentType: ContentType, limit: number = 50): Promise<ScraperResult[]> {
+    const wawaType = CONTENT_TYPE_MAP[contentType];
+    if (!wawaType) {
+      console.log(`[WawaCity] Unknown content type: ${contentType}`);
+      return [];
+    }
+
+    const url = `${this.baseUrl}/?p=${wawaType}`;
+    console.log(`[WawaCity] Fetching latest ${contentType}: ${url}`);
+
+    try {
+      const html = await fetchHtml(url);
+      const results = this.parseLatestResults(html, contentType, limit);
+      
+      console.log(`[WawaCity] Found ${results.length} latest ${contentType} results`);
+      return results;
+    } catch (error) {
+      console.error(`[WawaCity] Error fetching latest ${contentType}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Parse latest results from the listing page
+   */
+  private parseLatestResults(html: string, contentType: ContentType, limit: number): ScraperResult[] {
+    const $ = cheerio.load(html);
+    const results: ScraperResult[] = [];
+
+    // Parse les blocs .wa-sub-block.wa-post-detail-item
+    $('.wa-sub-block.wa-post-detail-item').each((index, block) => {
+      if (results.length >= limit) return false;
+
+      try {
+        const $block = $(block);
+        const $titleLink = $block.find('.wa-sub-block-title a[href^="?p="]').first();
+
+        if ($titleLink.length === 0) return;
+
+        const title = $titleLink.text().trim();
+        const href = $titleLink.attr('href') || '';
+
+        if (!title || !href) return;
+
+        // Extrait la taille depuis .wa-sub-block-content
+        const contentText = $block.find('.wa-sub-block-content').text();
+        const size = parseSize(contentText);
+
+        // Extrait qualité et langue depuis le titre
+        const quality = parseQuality(title);
+        const language = parseLanguage(title);
+
+        // Construit l'URL de la page
+        const pageUrl = href.startsWith('http') ? href : `${this.baseUrl}/${href}`;
+
+        results.push({
+          title,
+          link: pageUrl, // Le lien sera résolu plus tard si nécessaire
+          pageUrl,
+          size,
+          quality,
+          language,
+          contentType,
+          pubDate: new Date(),
+        });
+      } catch (error) {
+        console.error('[WawaCity] Error parsing latest item:', error);
+      }
+    });
+
+    return results;
+  }
+
   private async searchByType(params: SearchParams, contentType: ContentType): Promise<ScraperResult[]> {
     if (!params.q && !params.imdbid) return [];
 
@@ -232,22 +308,14 @@ export class WawacityScraper implements BaseScraper {
           }
         }
 
-        // Si on cherche une saison spécifique, vérifie que la saison correspond
-        if (params.season && contentType === 'series') {
-          const seasonNum = parseInt(params.season, 10);
-          if (extractedSeason !== undefined && extractedSeason !== seasonNum) {
-            console.log(`[WawaCity] Skipping "${title}" - season ${extractedSeason} != ${seasonNum}`);
-            return;
-          }
-        }
+        console.log(`[WawaCity] Found matching result: ${title}`);
 
-        // Construit le lien complet
-        const pageUrl = href.startsWith('http') ? href : `${this.baseUrl}/${href}`;
-
+        // Extrait qualité et langue depuis le titre ou les tags
         const quality = parseQuality(title);
         const language = parseLanguage(title);
 
-        console.log(`[WawaCity] Found matching result: ${title}`);
+        // Construit l'URL de la page de détail
+        const pageUrl = href.startsWith('http') ? href : `${this.baseUrl}/${href}`;
 
         results.push({
           title,
@@ -260,51 +328,6 @@ export class WawacityScraper implements BaseScraper {
         // Skip invalid items
       }
     });
-
-    // Fallback: utilise les anciens sélecteurs si aucun résultat
-    if (results.length === 0) {
-      const selector = RESULT_SELECTORS[contentType];
-      $(selector).each((_, element) => {
-        try {
-          const $link = $(element);
-          const titleHtml = $link.html() || '';
-          const title = $link.text().trim();
-          const href = $link.attr('href') || '';
-
-          if (!title || !href) return;
-
-          // Extrait le nom et la saison (selon le type de contenu)
-          const { name, season: extractedSeason } = extractName(titleHtml, contentType);
-
-          // Vérifie que le nom correspond (Levenshtein, adapté au type de contenu)
-          if (validationQuery && name) {
-            if (!isNameMatch(validationQuery, name, contentType, '[WawaCity]')) {
-              return;
-            }
-          }
-
-          // Si on cherche une saison spécifique, vérifie
-          if (params.season && contentType === 'series') {
-            const seasonNum = parseInt(params.season, 10);
-            if (extractedSeason !== undefined && extractedSeason !== seasonNum) {
-              return;
-            }
-          }
-
-          const pageUrl = href.startsWith('http') ? href : `${this.baseUrl}/${href}`;
-
-          results.push({
-            title,
-            pageUrl,
-            quality: parseQuality(title),
-            language: parseLanguage(title),
-            season: extractedSeason,
-          });
-        } catch {
-          // Skip invalid items
-        }
-      });
-    }
 
     return results;
   }

@@ -1,7 +1,7 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { getScraper, isValidSite, getAvailableSites, contentTypeToCategory } from '../scrapers/index.js';
 import { buildTorznabResponse, buildCapsResponse, buildErrorResponse } from '../utils/xml.js';
-import { TorznabItem, TorznabCaps, TorznabCategory, SearchParams, ScraperResult } from '../models/torznab.js';
+import { TorznabItem, TorznabCaps, TorznabCategory, SearchParams, ScraperResult, ContentType } from '../models/torznab.js';
 import { SiteType, config } from '../config.js';
 import { generateFakeTorrent } from '../utils/torrent.js';
 import { isDlProtectLink, resolveDlProtectLink } from '../utils/dlprotect.js';
@@ -45,6 +45,30 @@ const MOVIE_CATEGORIES = [2000, 2030, 2040, 2045, 2060];
 const TV_CATEGORIES = [5000, 5030, 5040, 5045];
 const ANIME_CATEGORIES = [5070];
 const EBOOK_CATEGORIES = [7000, 7010, 7020, 7030, 7050];
+
+/**
+ * Determine content type from category filter
+ */
+function getContentTypeFromCategories(categoryFilter: number[] | null): ContentType | null {
+  if (!categoryFilter || categoryFilter.length === 0) {
+    return null;
+  }
+
+  if (categoryFilter.some(cat => MOVIE_CATEGORIES.includes(cat))) {
+    return 'movie';
+  }
+  if (categoryFilter.some(cat => TV_CATEGORIES.includes(cat))) {
+    return 'series';
+  }
+  if (categoryFilter.some(cat => ANIME_CATEGORIES.includes(cat))) {
+    return 'anime';
+  }
+  if (categoryFilter.some(cat => EBOOK_CATEGORIES.includes(cat))) {
+    return 'ebook';
+  }
+
+  return null;
+}
 
 function getCapsForSite(siteName: string): TorznabCaps {
   return {
@@ -127,8 +151,31 @@ async function processResults(results: ScraperResult[]): Promise<TorznabItem[]> 
 async function executeSearch(ctx: SearchContext): Promise<string> {
   const { action, searchParams, categoryFilter, scraper, request } = ctx;
 
-  // Si pas de query, retourne un résultat fictif (utile pour les tests de connexion Radarr/Sonarr)
+  // Si pas de query mais une catégorie est spécifiée, retourne les dernières releases
   if (!searchParams.q && !searchParams.imdbid && !searchParams.tmdbid && !searchParams.tvdbid) {
+    const contentType = getContentTypeFromCategories(categoryFilter);
+    
+    // Si une catégorie est spécifiée et que le scraper supporte getLatest
+    if (contentType && scraper.getLatest) {
+      console.log(`[Torznab] Empty search with category - fetching latest ${contentType}`);
+      const limit = searchParams.limit || 100;
+      
+      try {
+        const results = await scraper.getLatest(contentType, limit);
+        
+        if (results.length > 0) {
+          const items = await processResults(results);
+          const protocol = request.headers['x-forwarded-proto'] || 'http';
+          const host = request.headers['x-forwarded-host'] || request.headers.host;
+          const baseUrl = `${protocol}://${host}`;
+          return buildTorznabResponse(items, scraper.name, baseUrl);
+        }
+      } catch (error) {
+        console.error(`[Torznab] Error fetching latest ${contentType}:`, error);
+      }
+    }
+
+    // Fallback: retourne un résultat fictif (utile pour les tests de connexion Radarr/Sonarr)
     console.log(`[Torznab] Empty search query - returning dummy result (connection test)`);
     const dummyItem: TorznabItem = {
       title: 'DDL Torznab Connection Test',

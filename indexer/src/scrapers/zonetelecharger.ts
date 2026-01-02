@@ -65,6 +65,82 @@ export class ZoneTelechargerScraper implements BaseScraper {
     return this.searchByType(params, 'ebook');
   }
 
+  /**
+   * Get latest releases for a content type (RSS feed style)
+   */
+  async getLatest(contentType: ContentType, limit: number = 50): Promise<ScraperResult[]> {
+    const ztType = CONTENT_TYPE_MAP[contentType];
+    if (!ztType) {
+      console.log(`[ZoneTelecharger] Unknown content type: ${contentType}`);
+      return [];
+    }
+
+    const url = `${this.baseUrl}/?p=${ztType}`;
+    console.log(`[ZoneTelecharger] Fetching latest ${contentType}: ${url}`);
+
+    try {
+      const html = await fetchHtml(url);
+      const results = this.parseLatestResults(html, contentType, limit);
+      
+      console.log(`[ZoneTelecharger] Found ${results.length} latest ${contentType} results`);
+      return results;
+    } catch (error) {
+      console.error(`[ZoneTelecharger] Error fetching latest ${contentType}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Parse latest results from the listing page
+   */
+  private parseLatestResults(html: string, contentType: ContentType, limit: number): ScraperResult[] {
+    const $ = cheerio.load(html);
+    const results: ScraperResult[] = [];
+
+    // Parse les blocs .cover_global
+    $('.cover_global').each((index, block) => {
+      if (results.length >= limit) return false;
+
+      try {
+        const $block = $(block);
+        const $titleLink = $block.find('div.cover_infos_title > a').first();
+
+        if ($titleLink.length === 0) return;
+
+        const title = $titleLink.text().trim();
+        const href = $titleLink.attr('href') || '';
+
+        if (!title || !href) return;
+
+        // Extrait qualité et langue depuis le titre
+        const quality = parseQuality(title);
+        const language = parseLanguage(title);
+
+        // Construit l'URL de la page
+        const pageUrl = href.startsWith('http') ? href : `${this.baseUrl}${href}`;
+
+        // Estime la taille (non disponible sur la page de listing)
+        // On met une taille par défaut pour éviter le filtrage
+        const defaultSize = contentType === 'ebook' ? 50 * 1024 * 1024 : 1500 * 1024 * 1024; // 50 Mo pour ebooks, 1.5 Go sinon
+
+        results.push({
+          title,
+          link: pageUrl, // Le lien sera résolu plus tard si nécessaire
+          pageUrl,
+          size: defaultSize,
+          quality,
+          language,
+          contentType,
+          pubDate: new Date(),
+        });
+      } catch (error) {
+        console.error('[ZoneTelecharger] Error parsing latest item:', error);
+      }
+    });
+
+    return results;
+  }
+
   private async searchByType(params: SearchParams, contentType: ContentType): Promise<ScraperResult[]> {
     if (!params.q && !params.imdbid) return [];
 
@@ -216,41 +292,28 @@ export class ZoneTelechargerScraper implements BaseScraper {
 
         // Langue dans div.cover_infos_title > .detail_release > span > b
         const langText = $block.find('div.cover_infos_title .detail_release > span > b').text().trim();
-        const language = parseLanguage(langText) || parseLanguage(title);
 
         // Extrait le nom et la saison depuis le titre (selon le type de contenu)
         const { name, season: extractedSeason } = extractName(titleHtml, contentType);
 
-        console.log(`[ZoneTelecharger] Parsed title: "${title}" -> name="${name}", season=${extractedSeason}, lang="${langText}"`);
+        console.log(`[ZoneTelecharger] Parsed title: "${title}" -> name="${name}", season=${extractedSeason}`);
 
         // Vérifie que le nom correspond à la recherche (Levenshtein, adapté au type de contenu)
-        // Pour les films, on est moins strict car on vérifiera le titre original sur la page détail
-        let needsOriginalTitleCheck = false;
         if (validationQuery && name) {
           if (!isNameMatch(validationQuery, name, contentType, '[ZoneTelecharger]')) {
-            if (contentType !== 'movie') {
-              console.log(`[ZoneTelecharger] Skipping "${name}" - too different from "${validationQuery}"`);
-              return;
-            }
-            console.log(`[ZoneTelecharger] Keeping "${name}" (movie) - will check original title on detail page`);
-            needsOriginalTitleCheck = true;
-          }
-        }
-
-        // Si on cherche une saison spécifique, vérifie que la saison correspond
-        if (params.season && contentType === 'series') {
-          const seasonNum = parseInt(params.season, 10);
-          if (extractedSeason !== undefined && extractedSeason !== seasonNum) {
-            console.log(`[ZoneTelecharger] Skipping "${title}" - season ${extractedSeason} != ${seasonNum}`);
+            console.log(`[ZoneTelecharger] Skipping "${name}" - too different from "${validationQuery}"`);
             return;
           }
         }
 
-        const pageUrl = href.startsWith('http') ? href : `${this.baseUrl}${href}`;
-
-        const quality = parseQuality(title);
-
         console.log(`[ZoneTelecharger] Found matching result: ${title}`);
+
+        // Extrait qualité et langue depuis le titre
+        const quality = parseQuality(title);
+        const language = langText || parseLanguage(title);
+
+        // Construit l'URL de la page de détail
+        const pageUrl = href.startsWith('http') ? href : `${this.baseUrl}${href}`;
 
         results.push({
           title,
@@ -258,8 +321,6 @@ export class ZoneTelechargerScraper implements BaseScraper {
           quality,
           language,
           season: extractedSeason,
-          needsOriginalTitleCheck,
-          validationQuery,
         });
       } catch {
         // Skip invalid items
@@ -273,7 +334,7 @@ export class ZoneTelechargerScraper implements BaseScraper {
     searchResult: SearchResult,
     contentType: ContentType,
     params: SearchParams,
-    needsOriginalTitleCheck: boolean = false
+    checkOriginalTitle?: boolean
   ): Promise<ScraperResult[]> {
     console.log(`[ZoneTelecharger] Fetching detail page: ${searchResult.pageUrl}`);
 
@@ -281,32 +342,9 @@ export class ZoneTelechargerScraper implements BaseScraper {
     const $ = cheerio.load(html);
     const results: ScraperResult[] = [];
 
-    // Extrait le titre original depuis "<strong><u>Titre original</u> :</strong> Title <br"
-    let originalTitle: string | undefined;
-    const bodyText = $('div.maincont, div.corps').text();
-    const originalTitleMatch = html.match(/<strong><u>Titre original<\/u>\s*:<\/strong>\s*([^<]+)/i);
-    if (originalTitleMatch) {
-      originalTitle = originalTitleMatch[1].trim();
-      console.log(`[ZoneTelecharger] Found original title: ${originalTitle}`);
-    }
+    const bodyText = $('body').text();
 
-    // Si on doit vérifier le titre original et qu'il ne correspond pas, on skip
-    const validationQuery = searchResult.validationQuery;
-    if (needsOriginalTitleCheck && validationQuery) {
-      const { name } = extractName(searchResult.title, contentType);
-      const frenchMatches = name ? isNameMatch(validationQuery, name, contentType, '[ZoneTelecharger]') : false;
-      const originalMatches = originalTitle ? isNameMatch(validationQuery, originalTitle, contentType, '[ZoneTelecharger]') : false;
-
-      if (!frenchMatches && !originalMatches) {
-        console.log(`[ZoneTelecharger] Skipping "${searchResult.title}" - neither French title "${name}" nor original "${originalTitle}" match "${validationQuery}"`);
-        return [];
-      }
-      if (originalMatches && !frenchMatches) {
-        console.log(`[ZoneTelecharger] Matched via original title: "${originalTitle}"`);
-      }
-    }
-
-    // Extrait la taille du fichier depuis la page
+    // Extrait la taille du fichier
     let fileSize: number | undefined;
 
     // Méthode 1: "Taille du fichier : X Go"
