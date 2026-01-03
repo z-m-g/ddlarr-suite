@@ -1,0 +1,26 @@
+{
+  "name": "ddl-qbittorrent",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "build:ui": "cd ui && npm run build && cp -r dist/* ../public/",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^9.0.0",
+    "@fastify/formbody": "^7.4.0",
+    "@fastify/multipart": "^8.0.0",
+    "@fastify/static": "^7.0.0",
+    "axios": "^1.6.0",
+    "better-sqlite3": "^11.0.0",
+    "fastify": "^4.24.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.0",
+    "@types/node": "^20.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.3.0"
+  }
+}

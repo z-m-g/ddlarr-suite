@@ -27,6 +27,9 @@ build/
 *.cache
 cache/
 downloader-config/
+downloads-temp/
+qbittorrent-data/
+downloads/
 
 # Temporary files
 *.tmp

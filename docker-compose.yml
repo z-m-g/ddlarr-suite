@@ -104,3 +104,36 @@ services:
       - ${BLACKHOLE_PATH:-./blackhole}:/blackhole
       - ${DOWNLOADS_PATH:-./downloads}:/downloads
     restart: unless-stopped
+
+  # DDL-qBittorrent - qBittorrent-compatible API for Sonarr/Radarr integration
+  ddl-qbittorrent:
+    build: ./qbittorrent
+    container_name: ddl-qbittorrent
+    ports:
+      - "${QBITTORRENT_PORT:-8080}:8080"
+    depends_on:
+      dlprotect-resolver:
+        condition: service_healthy
+    environment:
+      - PORT=8080
+      - DATA_PATH=/data
+      - DOWNLOAD_PATH=/downloads
+      - TEMP_PATH=/downloads-temp
+      - DLPROTECT_SERVICE_URL=http://dlprotect-resolver:${DLPROTECT_RESOLVER_PORT:-5000}
+      # Authentication
+      - QB_USERNAME=${QB_USERNAME:-admin}
+      - QB_PASSWORD=${QB_PASSWORD:-adminadmin}
+      # Download settings
+      - MAX_CONCURRENT_DOWNLOADS=${MAX_CONCURRENT_DOWNLOADS:-3}
+      # Debrid Services
+      - ALLDEBRID_ENABLED=${ALLDEBRID_ENABLED:-false}
+      - ALLDEBRID_API_KEY=${ALLDEBRID_API_KEY:-}
+      - REALDEBRID_ENABLED=${REALDEBRID_ENABLED:-false}
+      - REALDEBRID_API_KEY=${REALDEBRID_API_KEY:-}
+      - PREMIUMIZE_ENABLED=${PREMIUMIZE_ENABLED:-false}
+      - PREMIUMIZE_API_KEY=${PREMIUMIZE_API_KEY:-}
+    volumes:
+      - ${QBITTORRENT_DATA_PATH:-./qbittorrent-data}:/data
+      - ${DOWNLOADS_PATH:-./downloads}:/downloads
+      - ${DOWNLOADS_TEMP_PATH:-./downloads-temp}:/downloads-temp
+    restart: unless-stopped
