@@ -521,16 +521,30 @@ export class ZoneTelechargerScraper implements BaseScraper {
           const quality = pageQuality || searchResult.quality || parseQuality(searchResult.title);
           const language = pageLanguage || searchResult.language || parseLanguage(searchResult.title);
 
-          // Construit le titre au format parsable par Radarr/Sonarr
+          // Construit le titre au format parsable par Radarr/Sonarr/Readarr
           // Films: Titre.Année.Qualité.Language.Hoster
           // Séries: Titre.S01E05.Qualité.Language.Hoster
-          // Nettoie le nom: enlève les crochets [xxx], les tirets et leur contenu, et les espaces multiples
-          const baseName = searchResult.title
-            .split(' - ')[0]
-            .replace(/\[.*?\]/g, '')  // Enlève [HDLIGHT 1080p] etc.
-            .replace(/\s+/g, ' ')     // Normalise les espaces
-            .trim()
-            .replace(/\s+/g, '.');    // Remplace les espaces par des points
+          // Ebooks: Titre.Complet.Hoster (préserve les dates de publication pour magazines/journaux)
+          let baseName: string;
+          
+          if (contentType === 'ebook') {
+            // Pour les ebooks, on préserve le titre complet incluant les dates de publication
+            // Ex: "Voici - 16 FÉVRIER 2018" -> "Voici.-.16.FÉVRIER.2018"
+            baseName = searchResult.title
+              .replace(/\[.*?\]/g, '')  // Enlève les tags [Journaux], [Magazines] etc.
+              .replace(/\s+/g, ' ')     // Normalise les espaces
+              .trim()
+              .replace(/\s+/g, '.');    // Remplace les espaces par des points
+          } else {
+            // Pour films/séries, on ne garde que le titre (avant le premier " - ")
+            // Ex: "Inception - HDLIGHT 1080p - MULTI" -> "Inception"
+            baseName = searchResult.title
+              .split(' - ')[0]
+              .replace(/\[.*?\]/g, '')  // Enlève [HDLIGHT 1080p] etc.
+              .replace(/\s+/g, ' ')     // Normalise les espaces
+              .trim()
+              .replace(/\s+/g, '.');    // Remplace les espaces par des points
+          }
           const parts: string[] = [baseName];
 
           if (contentType === 'movie' && pageYear) {
