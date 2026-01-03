@@ -110,11 +110,57 @@ export function isMovieNameMatch(searchQuery: string, foundName: string, logPref
 }
 
 /**
+ * Vérifie si un nom d'ebook correspond à la recherche
+ * Pour les ebooks, on utilise une logique permissive basée sur l'inclusion de mots-clés
+ */
+export function isEbookNameMatch(searchQuery: string, foundName: string, logPrefix = '[Scraper]'): boolean {
+  const normalizedQuery = normalizeForMatch(searchQuery);
+  const normalizedFound = normalizeForMatch(foundName);
+
+  // Match exact
+  if (normalizedQuery === normalizedFound) {
+    console.log(`${logPrefix} Ebook exact match: "${searchQuery}" = "${foundName}"`);
+    return true;
+  }
+
+  // Vérifie si la query est contenue dans le titre
+  if (normalizedFound.includes(normalizedQuery)) {
+    console.log(`${logPrefix} Ebook contains match: "${searchQuery}" in "${foundName}"`);
+    return true;
+  }
+
+  // Vérifie si tous les mots de la query sont présents dans le titre
+  const queryWords = searchQuery
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .split(/\s+/)
+    .filter(word => word.length > 2); // Ignore les mots trop courts (le, la, de, etc.)
+
+  const foundLower = foundName
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  const matchesAllWords = queryWords.every(word => foundLower.includes(word));
+  if (matchesAllWords && queryWords.length > 0) {
+    console.log(`${logPrefix} Ebook words match: "${searchQuery}" - all words found in "${foundName}"`);
+    return true;
+  }
+
+  console.log(`${logPrefix} Ebook no match: "${searchQuery}" not in "${foundName}"`);
+  return false;
+}
+
+/**
  * Vérifie si un nom correspond à la recherche (selon le type de contenu)
  */
 export function isNameMatch(searchQuery: string, foundName: string, contentType: ContentType, logPrefix = '[Scraper]'): boolean {
   if (contentType === 'movie') {
     return isMovieNameMatch(searchQuery, foundName, logPrefix);
+  }
+  if (contentType === 'ebook') {
+    return isEbookNameMatch(searchQuery, foundName, logPrefix);
   }
   return isSeriesNameMatch(searchQuery, foundName, logPrefix);
 }
@@ -185,11 +231,30 @@ export function extractSeriesName(titleHtml: string): { seriesName: string; seas
 }
 
 /**
+ * Extrait le nom de l'ebook depuis le titre (enlève les tags et crochets)
+ */
+export function extractEbookName(titleHtml: string): string {
+  // Enlève les tags HTML
+  let cleanTitle = titleHtml
+    .replace(/<[^>]+>/g, '') // Supprime les tags HTML
+    .replace(/\s+/g, ' ')    // Normalise les espaces
+    .trim();
+
+  // Retire les textes entre crochets [Journaux], [Magazines], etc.
+  cleanTitle = removeBrackets(cleanTitle);
+
+  return cleanTitle.trim();
+}
+
+/**
  * Extrait le nom selon le type de contenu
  */
 export function extractName(titleHtml: string, contentType: ContentType): { name: string; season?: number } {
   if (contentType === 'movie') {
     return { name: extractMovieName(titleHtml) };
+  }
+  if (contentType === 'ebook') {
+    return { name: extractEbookName(titleHtml) };
   }
   const { seriesName, season } = extractSeriesName(titleHtml);
   return { name: seriesName, season };

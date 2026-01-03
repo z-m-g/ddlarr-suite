@@ -71,6 +71,86 @@ export class WawacityScraper implements BaseScraper {
     return this.searchByType(params, 'ebook');
   }
 
+  /**
+   * Get latest releases for a content type (RSS feed style)
+   */
+  async getLatest(contentType: ContentType, limit: number = 50): Promise<ScraperResult[]> {
+    const wawaType = CONTENT_TYPE_MAP[contentType];
+    if (!wawaType) {
+      console.log(`[WawaCity] Unknown content type: ${contentType}`);
+      return [];
+    }
+
+    const url = `${this.baseUrl}/?p=${wawaType}`;
+    console.log(`[WawaCity] Fetching latest ${contentType}: ${url}`);
+
+    try {
+      const html = await fetchHtml(url);
+      const results = this.parseLatestResults(html, contentType, limit);
+
+      console.log(`[WawaCity] Found ${results.length} latest ${contentType} results`);
+      return results;
+    } catch (error) {
+      console.error(`[WawaCity] Error fetching latest ${contentType}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Parse latest results from the listing page
+   */
+  private parseLatestResults(html: string, contentType: ContentType, limit: number): ScraperResult[] {
+    const $ = cheerio.load(html);
+    const results: ScraperResult[] = [];
+
+    // Parse les blocs .wa-sub-block.wa-post-detail-item
+    $('.wa-sub-block.wa-post-detail-item').each((index, block) => {
+      if (results.length >= limit) return false;
+
+      try {
+        const $block = $(block);
+        const $titleLink = $block.find('.wa-sub-block-title a[href^="?p="]').first();
+
+        if ($titleLink.length === 0) return;
+
+        const title = $titleLink.text().trim();
+        const href = $titleLink.attr('href') || '';
+
+        if (!title || !href) return;
+
+        // Extrait la taille depuis .wa-sub-block-content
+        const contentText = $block.find('.wa-sub-block-content').text();
+        let size = parseSize(contentText);
+
+        if (!size) {
+          size = contentType === 'ebook' ? 50 * 1024 * 1024 : 1500 * 1024 * 1024; // 50 Mo pour ebooks, 1.5 Go sinon
+        }
+
+        // Extrait qualité et langue depuis le titre
+        const quality = parseQuality(title);
+        const language = parseLanguage(title);
+
+        // Construit l'URL de la page
+        const pageUrl = href.startsWith('http') ? href : `${this.baseUrl}/${href}`;
+
+        results.push({
+          title,
+          link: pageUrl, // Le lien sera résolu plus tard si nécessaire
+          pageUrl,
+          size,
+          quality,
+          language,
+          contentType,
+          pubDate: new Date(),
+        });
+      } catch (error) {
+        console.error('[WawaCity] Error parsing latest item:', error);
+      }
+    });
+
+    return results;
+  }
+
   private async searchByType(params: SearchParams, contentType: ContentType): Promise<ScraperResult[]> {
     if (!params.q && !params.imdbid) return [];
 
@@ -452,16 +532,30 @@ export class WawacityScraper implements BaseScraper {
       const quality = searchResult.quality || parseQuality(searchResult.title);
       const language = searchResult.language || parseLanguage(searchResult.title);
 
-      // Construit le titre au format parsable par Radarr/Sonarr
+      // Construit le titre au format parsable par Radarr/Sonarr/Readarr
       // Films: Titre.Année.Qualité.Language.Hoster
       // Séries: Titre.S01E05.Qualité.Language.Hoster
-      // Nettoie le nom: enlève les crochets [xxx], les tirets et leur contenu, et les espaces multiples
-      const baseName = searchResult.title
-        .split(' - ')[0]
-        .replace(/\[.*?\]/g, '')  // Enlève [HDLIGHT 1080p] etc.
-        .replace(/\s+/g, ' ')     // Normalise les espaces
-        .trim()
-        .replace(/\s+/g, '.');    // Remplace les espaces par des points
+      // Ebooks: Titre.Complet.Hoster (préserve les dates de publication pour magazines/journaux)
+      let baseName: string;
+      
+      if (contentType === 'ebook') {
+        // Pour les ebooks, on préserve le titre complet incluant les dates de publication
+        // Ex: "Voici - 16 FÉVRIER 2018" -> "Voici.-.16.FÉVRIER.2018"
+        baseName = searchResult.title
+          .replace(/\[.*?\]/g, '')  // Enlève les tags [Journaux], [Magazines] etc.
+          .replace(/\s+/g, ' ')     // Normalise les espaces
+          .trim()
+          .replace(/\s+/g, '.');    // Remplace les espaces par des points
+      } else {
+        // Pour films/séries, on ne garde que le titre (avant le premier " - ")
+        // Ex: "Inception - HDLIGHT 1080p - MULTI" -> "Inception"
+        baseName = searchResult.title
+          .split(' - ')[0]
+          .replace(/\[.*?\]/g, '')  // Enlève [HDLIGHT 1080p] etc.
+          .replace(/\s+/g, ' ')     // Normalise les espaces
+          .trim()
+          .replace(/\s+/g, '.');    // Remplace les espaces par des points
+      }
       const parts: string[] = [baseName];
 
       if (contentType === 'movie' && pageYear) {

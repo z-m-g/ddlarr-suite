@@ -1,7 +1,7 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { getScraper, isValidSite, getAvailableSites, contentTypeToCategory } from '../scrapers/index.js';
 import { buildTorznabResponse, buildCapsResponse, buildErrorResponse } from '../utils/xml.js';
-import { TorznabItem, TorznabCaps, TorznabCategory, SearchParams, ScraperResult } from '../models/torznab.js';
+import { TorznabItem, TorznabCaps, TorznabCategory, SearchParams, ScraperResult, ContentType } from '../models/torznab.js';
 import { SiteType, config } from '../config.js';
 import { generateFakeTorrent } from '../utils/torrent.js';
 import { isDlProtectLink, resolveDlProtectLink } from '../utils/dlprotect.js';
@@ -46,6 +46,18 @@ const TV_CATEGORIES = [5000, 5030, 5040, 5045];
 const ANIME_CATEGORIES = [5070];
 const EBOOK_CATEGORIES = [7000, 7010, 7020, 7030, 7050];
 
+function getContentTypesFromCategories(categoryFilter: number[] | null): ContentType[] {
+  if (!categoryFilter || categoryFilter.length === 0) {
+    return ['movie', 'series', 'anime', 'ebook'];
+  }
+  const types: ContentType[] = [];
+  if (categoryFilter.some(c => MOVIE_CATEGORIES.includes(c))) types.push('movie');
+  if (categoryFilter.some(c => TV_CATEGORIES.includes(c))) types.push('series');
+  if (categoryFilter.some(c => ANIME_CATEGORIES.includes(c))) types.push('anime');
+  if (categoryFilter.some(c => EBOOK_CATEGORIES.includes(c))) types.push('ebook');
+  return types.length > 0 ? types : ['movie', 'series', 'anime', 'ebook'];
+}
+
 function getCapsForSite(siteName: string): TorznabCaps {
   return {
     server: {
@@ -88,10 +100,10 @@ function getCapsForSite(siteName: string): TorznabCaps {
 async function processResults(results: ScraperResult[]): Promise<TorznabItem[]> {
   const items: TorznabItem[] = [];
   const resolveInIndexer = config.dlprotectResolveAt === 'indexer';
+  const now = new Date();
 
-  for (const result of results) {
-    // Resolve dl-protect links via Botasaurus service (if configured to resolve in indexer)
-    // Note: Debriding is now handled by the downloader service
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i];
     let link = result.link;
     if (resolveInIndexer && isDlProtectLink(link)) {
       link = await resolveDlProtectLink(link);
@@ -99,10 +111,10 @@ async function processResults(results: ScraperResult[]): Promise<TorznabItem[]> 
 
     items.push({
       title: result.title,
-      guid: Buffer.from(result.link).toString('base64').slice(0, 40),
+      guid: Buffer.from(`${result.link}-${result.title}`).toString('base64'),
       link,
       comments: result.pageUrl,
-      pubDate: result.pubDate,
+      pubDate: result.pubDate || new Date(now.getTime() - i * 60000),
       size: result.size,
       category: contentTypeToCategory(result.contentType, result.quality),
       imdbId: result.imdbId,
@@ -119,25 +131,54 @@ async function processResults(results: ScraperResult[]): Promise<TorznabItem[]> 
 }
 
 /**
+ * Handle RSS feed (no search query) - returns latest items
+ */
+async function handleRssFeed(ctx: SearchContext): Promise<string> {
+  const { searchParams, categoryFilter, scraper, request } = ctx;
+  const contentTypes = getContentTypesFromCategories(categoryFilter);
+  let allResults: ScraperResult[] = [];
+
+  if (scraper.getLatest) {
+    const tasks = contentTypes.map(type => scraper.getLatest!(type, searchParams.limit));
+    const completed = await Promise.allSettled(tasks);
+    for (const res of completed) {
+      if (res.status === 'fulfilled') allResults = [...allResults, ...res.value];
+    }
+  }
+
+  let items = await processResults(allResults);
+
+  // Filter by category if specified
+  if (categoryFilter && categoryFilter.length > 0) {
+    items = items.filter(item => categoryFilter.includes(item.category as number));
+  }
+
+  // Sort by date descending
+  items.sort((a, b) => {
+    const dateA = a.pubDate ? new Date(a.pubDate).getTime() : 0;
+    const dateB = b.pubDate ? new Date(b.pubDate).getTime() : 0;
+    return dateB - dateA;
+  });
+
+  // Apply limit
+  items = items.slice(0, searchParams.limit || 100);
+
+  const protocol = (request.headers['x-forwarded-proto'] as string) || 'http';
+  const host = request.headers['x-forwarded-host'] || request.headers.host;
+  const baseUrl = `${protocol}://${host}`;
+
+  return buildTorznabResponse(items, scraper.name, baseUrl);
+}
+
+/**
  * Core search logic shared between endpoints
  */
 async function executeSearch(ctx: SearchContext): Promise<string> {
   const { action, searchParams, categoryFilter, scraper, request } = ctx;
 
-  // Si pas de query, retourne un résultat fictif (utile pour les tests de connexion Radarr/Sonarr)
+  // RSS feed mode: no search query provided
   if (!searchParams.q && !searchParams.imdbid && !searchParams.tmdbid && !searchParams.tvdbid) {
-    console.log(`[Torznab] Empty search query - returning dummy result (connection test)`);
-    const dummyItem: TorznabItem = {
-      title: 'DDL Torznab Connection Test',
-      guid: 'ddl-torznab-test',
-      link: 'https://example.com/test',
-      pubDate: new Date(),
-      size: 1500000000, // 1.5 GB
-      category: action === 'tvsearch' ? TorznabCategory.TVHD : TorznabCategory.MoviesHD,
-      quality: '1080p',
-      language: 'MULTI',
-    };
-    return buildTorznabResponse([dummyItem], scraper.name);
+    return handleRssFeed(ctx);
   }
 
   let results: ScraperResult[] = [];
@@ -182,24 +223,10 @@ async function executeSearch(ctx: SearchContext): Promise<string> {
       break;
     }
     case 'movie':
-      // Only search if imdbid is provided to avoid duplicate results
-      // (Radarr sends both text and imdbid searches)
-      if (searchParams.imdbid) {
-        results = await scraper.searchMovies(searchParams);
-      } else {
-        console.log(`[Torznab] Skipping movie search without imdbid to avoid duplicates`);
-        results = [];
-      }
+      results = await scraper.searchMovies(searchParams);
       break;
     case 'tvsearch':
-      // Only search if imdbid is provided to avoid duplicate results
-      // (Sonarr sends both text and imdbid searches)
-      if (searchParams.imdbid) {
-        results = await scraper.searchSeries(searchParams);
-      } else {
-        console.log(`[Torznab] Skipping tvsearch without imdbid to avoid duplicates`);
-        results = [];
-      }
+      results = await scraper.searchSeries(searchParams);
       break;
     case 'book':
       if (scraper.searchEbooks) {
@@ -215,37 +242,26 @@ async function executeSearch(ctx: SearchContext): Promise<string> {
   if (categoryFilter && categoryFilter.length > 0) {
     results = results.filter(result => {
       const category = contentTypeToCategory(result.contentType, result.quality);
-      if (categoryFilter.includes(category)) {
-        return true;
-      }
-      console.log(`[Torznab] Skipping "${result.title}" - category ${category} not in filter: ${categoryFilter.join(',')}`);
-      return false;
+      return categoryFilter.includes(category);
     });
   }
 
-  // Filter out results without valid size (Radarr/Sonarr need size info)
-  const beforeSizeFilter = results.length;
-  results = results.filter(result => {
-    if (!result.size || result.size <= 0) {
-      console.log(`[Torznab] Skipping "${result.title}" - no valid size`);
-      return false;
-    }
-    return true;
-  });
-  if (beforeSizeFilter !== results.length) {
-    console.log(`[Torznab] Filtered out ${beforeSizeFilter - results.length} results without size`);
-  }
-
-  // Process results (resolve dl-protect links)
+  // Process results (resolve dl-protect links, generate pubDate fallback)
   const items = await processResults(results);
+
+  // Sort by date descending
+  items.sort((a, b) => {
+    const dateA = a.pubDate ? new Date(a.pubDate).getTime() : 0;
+    const dateB = b.pubDate ? new Date(b.pubDate).getTime() : 0;
+    return dateB - dateA;
+  });
 
   // Apply limit and offset
   const start = searchParams.offset || 0;
   const end = start + (searchParams.limit || 100);
   const paginatedItems = items.slice(start, end);
 
-  // Génère l'URL de base pour les liens torrent
-  const protocol = request.headers['x-forwarded-proto'] || 'http';
+  const protocol = (request.headers['x-forwarded-proto'] as string) || 'http';
   const host = request.headers['x-forwarded-host'] || request.headers.host;
   const baseUrl = `${protocol}://${host}`;
 
@@ -262,10 +278,6 @@ async function handleTorznabRequest(
   hostersOverride?: string
 ): Promise<string> {
   const { t: action, q, cat, limit, offset, imdbid, tmdbid, tvdbid, season, ep, hoster, year } = request.query;
-
-  if (hostersOverride) {
-    console.log(`[Torznab] Request with hosters in path: site=${site}, hosters=${hostersOverride}`);
-  }
 
   // Parse category filter
   const categoryFilter = cat
@@ -345,8 +357,7 @@ export async function torznabRoutes(app: FastifyInstance): Promise<void> {
     return { sites: getAvailableSites() };
   });
 
-  // Génère un faux fichier .torrent contenant le lien DDL
-  // Usage: /torrent?link=URL_ENCODEE&name=NOM_FICHIER&size=TAILLE
+  // Generate fake .torrent file containing the DDL link
   app.get<{
     Querystring: { link: string; name?: string; size?: string };
   }>('/torrent', async (request, reply) => {
@@ -376,7 +387,6 @@ export async function torznabRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // Generic Torznab API endpoint (without site parameter)
-  // Used by Radarr/Sonarr for capabilities check
   app.get<{
     Querystring: TorznabQuerystring;
   }>('/api', async (request: FastifyRequest<{ Querystring: TorznabQuerystring }>, reply: FastifyReply) => {
