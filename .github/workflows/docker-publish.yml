@@ -108,7 +108,29 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Check if manifest needs update
+        id: check
+        working-directory: /tmp/digests
+        run: |
+          new_digests=$(ls -1 | sed 's/^/sha256:/' | sort | tr '\n' ' ' | xargs)
+          echo "New digests: $new_digests"
+
+          image="${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.image }}:latest"
+          if raw=$(docker buildx imagetools inspect "$image" --raw 2>/dev/null); then
+            current_digests=$(echo "$raw" | jq -r '.manifests[].digest' | sort | tr '\n' ' ' | xargs)
+            echo "Current :latest digests: $current_digests"
+            if [ "$new_digests" = "$current_digests" ]; then
+              echo "changed=false" >> "$GITHUB_OUTPUT"
+              echo "::notice::Image ${{ matrix.image }} unchanged, skipping manifest push"
+              exit 0
+            fi
+          else
+            echo "No existing :latest for ${{ matrix.image }}"
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
       - name: Extract metadata
+        if: steps.check.outputs.changed == 'true'
         id: meta
         uses: docker/metadata-action@v6
         with:
@@ -118,6 +140,7 @@ jobs:
             type=sha,prefix=
 
       - name: Create manifest list and push
+        if: steps.check.outputs.changed == 'true'
         working-directory: /tmp/digests
         run: |
           docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
