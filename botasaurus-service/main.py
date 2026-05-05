@@ -246,8 +246,10 @@ def resolve_dlprotect(driver: Driver, url: str):
 
             try:
                 # Locate iframe containing the Cloudflare challenge (at position 840, 290)
-                print("[DLProtect] Getting iframe at position (840, 290)...")
-                iframe = driver.get_element_at_point(840, 290)
+#                 print("[DLProtect] Getting iframe at position (840, 290)...")
+#                 iframe = driver.get_element_at_point(840, 290)
+                print("[DLProtect] Getting iframe at position (832, 640)...")
+                iframe = driver.get_element_at_point(832, 640)
                 print(f"[DLProtect] Iframe element: {iframe}")
 
                 # Find checkbox element within the iframe (at 30, 30 inside iframe)
