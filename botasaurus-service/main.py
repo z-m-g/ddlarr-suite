@@ -248,8 +248,8 @@ def resolve_dlprotect(driver: Driver, url: str):
                 # Locate iframe containing the Cloudflare challenge (at position 840, 290)
 #                 print("[DLProtect] Getting iframe at position (840, 290)...")
 #                 iframe = driver.get_element_at_point(840, 290)
-                print("[DLProtect] Getting iframe at position (832, 640)...")
-                iframe = driver.get_element_at_point(832, 640)
+                print("[DLProtect] Getting iframe at position (832, 568)...")
+                iframe = driver.get_element_at_point(832, 568)
                 print(f"[DLProtect] Iframe element: {iframe}")
 
                 # Find checkbox element within the iframe (at 30, 30 inside iframe)
@@ -331,7 +331,7 @@ def resolve_dlprotect(driver: Driver, url: str):
     try:
         while waited < max_wait:
             link = driver.run_js("""
-                const container = document.querySelector('#protected-container .col-md-12 a');
+                const container = document.querySelector('main.content-centered div.dest-box a.dest-url');
                 return container ? container.href : null;
             """)
             if link and not is_dlprotect_link(link):
