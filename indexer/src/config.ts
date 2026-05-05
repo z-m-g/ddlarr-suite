@@ -54,17 +54,18 @@ export async function initializeSiteUrls(): Promise<void> {
   const sites: TelegramSiteType[] = ['wawacity', 'zonetelecharger'];
 
   for (const site of sites) {
-    if (!config.sites[site]) {
-      console.log(`[Config] ${site} URL not configured, fetching from Telegram...`);
-      const url = await getSiteUrlFromTelegram(site, config.telegram[site]);
-      if (url) {
-        resolvedSiteUrls[site] = url;
-        console.log(`[Config] ${site} URL resolved: ${url}`);
-      } else {
-        console.warn(`[Config] Could not resolve ${site} URL from Telegram`);
-      }
+    if (config.sites[site]) {
+      console.log(`[Config] ${site} URL configured (fallback): ${config.sites[site]}`);
+    }
+    console.log(`[Config] Fetching ${site} URL from Telegram...`);
+    const url = await getSiteUrlFromTelegram(site, config.telegram[site]);
+    if (url) {
+      resolvedSiteUrls[site] = url;
+      console.log(`[Config] ${site} URL resolved from Telegram: ${url}`);
+    } else if (config.sites[site]) {
+      console.warn(`[Config] Telegram resolution failed for ${site}, using env fallback: ${config.sites[site]}`);
     } else {
-      console.log(`[Config] ${site} URL configured: ${config.sites[site]}`);
+      console.warn(`[Config] Could not resolve ${site} URL from Telegram and no env fallback`);
     }
   }
 
@@ -100,13 +101,10 @@ async function refreshSiteUrls(): Promise<void> {
   const sites: TelegramSiteType[] = ['wawacity', 'zonetelecharger'];
 
   for (const site of sites) {
-    // Only refresh URLs that come from Telegram (not env vars)
-    if (!config.sites[site]) {
-      const url = await getSiteUrlFromTelegram(site, config.telegram[site]);
-      if (url && url !== resolvedSiteUrls[site]) {
-        console.log(`[Config] ${site} URL updated: ${resolvedSiteUrls[site]} -> ${url}`);
-        resolvedSiteUrls[site] = url;
-      }
+    const url = await getSiteUrlFromTelegram(site, config.telegram[site]);
+    if (url && url !== resolvedSiteUrls[site]) {
+      console.log(`[Config] ${site} URL updated: ${resolvedSiteUrls[site]} -> ${url}`);
+      resolvedSiteUrls[site] = url;
     }
   }
 
