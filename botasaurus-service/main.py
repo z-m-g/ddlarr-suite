@@ -5,7 +5,9 @@ import time
 import glob
 import hashlib
 import base64
+import tempfile
 import requests
+import cv2
 from flask import Flask, request, jsonify
 from botasaurus.browser import browser, Driver
 from botasaurus.cache import Cache
@@ -180,6 +182,73 @@ def random_delay(min_sec=0.2, max_sec=2.0):
     delay = random.uniform(min_sec, max_sec)
     time.sleep(delay)
 
+def find_turnstile_box(driver):
+    """Locate the Cloudflare Turnstile widget visually from a screenshot.
+
+    The DLProtect page is very dark and the Turnstile widget is the only large
+    near-white rectangle on it, so we threshold for white pixels and pick the
+    biggest contour matching the widget's size/aspect ratio. This is robust to
+    the page layout shifting vertically (which used to break hardcoded coords)
+    and tolerant to rendering scale.
+
+    Returns (x, y, w, h, scale_x, scale_y) where (x, y, w, h) is the widget's
+    bounding box in screenshot pixels and (scale_x, scale_y) maps screenshot
+    pixels to viewport/CSS coordinates (handles devicePixelRatio != 1).
+    Returns None if the widget could not be located.
+    """
+    tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+    tmp.close()
+    try:
+        driver.save_screenshot(tmp.name)
+        img = cv2.imread(tmp.name)
+        if img is None:
+            print("[DLProtect] Could not read screenshot for Turnstile detection")
+            return None
+
+        sh, sw = img.shape[:2]
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        _, thresh = cv2.threshold(gray, 230, 255, cv2.THRESH_BINARY)
+        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        best = None
+        for c in contours:
+            x, y, w, h = cv2.boundingRect(c)
+            # Turnstile "normal" widget is ~300x65; allow a generous range
+            if w < 180 or w > 420 or h < 35 or h > 110:
+                continue
+            aspect = w / h
+            if aspect < 3.0 or aspect > 7.0:
+                continue
+            fill = cv2.contourArea(c) / (w * h)
+            if fill < 0.7:  # the widget is a solid white box
+                continue
+            area = w * h
+            if best is None or area > best[0]:
+                best = (area, x, y, w, h)
+
+        if not best:
+            print("[DLProtect] No Turnstile-like white box found in screenshot")
+            return None
+
+        _, x, y, w, h = best
+
+        # Map screenshot pixels -> viewport CSS coordinates (DPR-aware)
+        scale_x = scale_y = 1.0
+        try:
+            viewport = driver.run_js("return {w: window.innerWidth, h: window.innerHeight};")
+            if viewport and viewport.get('w') and viewport.get('h'):
+                scale_x = viewport['w'] / sw
+                scale_y = viewport['h'] / sh
+        except Exception as e:
+            print(f"[DLProtect] Could not read viewport size, assuming scale 1: {e}")
+
+        return (x, y, w, h, scale_x, scale_y)
+    finally:
+        try:
+            os.remove(tmp.name)
+        except Exception:
+            pass
+
 @browser(
     reuse_driver=True,
     headless=False,  # Use real browser with xvfb
@@ -245,16 +314,30 @@ def resolve_dlprotect(driver: Driver, url: str):
             take_screenshot(driver, "04_before_turnstile_click")
 
             try:
-                # Locate iframe containing the Cloudflare challenge (at position 840, 290)
-#                 print("[DLProtect] Getting iframe at position (840, 290)...")
-#                 iframe = driver.get_element_at_point(840, 290)
-                print("[DLProtect] Getting iframe at position (832, 568)...")
-                iframe = driver.get_element_at_point(832, 568)
+                # Locate the Turnstile widget visually instead of using hardcoded
+                # coordinates (the DLProtect layout shifts vertically and broke any
+                # fixed position; the widget content is in a shadow DOM so it can't
+                # be found via querySelector).
+                box = find_turnstile_box(driver)
+                if not box:
+                    raise Exception("Could not visually locate Turnstile widget")
+
+                bx, by, bw, bh, sx, sy = box
+                print(f"[DLProtect] Turnstile widget at px (x={bx}, y={by}, w={bw}, h={bh}), scale=({sx:.3f}, {sy:.3f})")
+
+                # A point inside the widget (its center) returns the iframe element
+                center_x = int((bx + bw / 2) * sx)
+                center_y = int((by + bh / 2) * sy)
+                print(f"[DLProtect] Getting iframe at viewport ({center_x}, {center_y})...")
+                iframe = driver.get_element_at_point(center_x, center_y)
                 print(f"[DLProtect] Iframe element: {iframe}")
 
-                # Find checkbox element within the iframe (at 30, 30 inside iframe)
-                print("[DLProtect] Getting checkbox at (30, 30) inside iframe...")
-                checkbox = iframe.get_element_at_point(30, 30)
+                # The checkbox sits ~22px from the widget's left edge, vertically
+                # centered. Coordinates here are relative to the iframe's top-left.
+                cb_x = int(22 * sx)
+                cb_y = int((bh / 2) * sy)
+                print(f"[DLProtect] Getting checkbox at ({cb_x}, {cb_y}) inside iframe...")
+                checkbox = iframe.get_element_at_point(cb_x, cb_y)
                 print(f"[DLProtect] Checkbox element: {checkbox}")
 
                 # Enable human mode for realistic mouse movements
