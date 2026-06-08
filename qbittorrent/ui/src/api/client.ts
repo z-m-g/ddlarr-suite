@@ -130,6 +130,22 @@ class ApiClient {
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
   }
 
+  async forceStartTorrents(hashes: string[]): Promise<void> {
+    const formData = new URLSearchParams()
+    formData.append('hashes', hashes.join('|'))
+    formData.append('value', 'true')
+
+    const response = await fetch(`${this.baseUrl}/api/v2/torrents/setForceStart`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: formData,
+      credentials: 'include',
+    })
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  }
+
   async deleteTorrents(hashes: string[], deleteFiles: boolean): Promise<void> {
     const formData = new URLSearchParams()
     formData.append('hashes', hashes.join('|'))

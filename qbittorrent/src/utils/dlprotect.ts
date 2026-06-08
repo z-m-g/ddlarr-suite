@@ -32,10 +32,26 @@ export function cleanDlProtectUrl(url: string): string {
 }
 
 /**
- * Resolve a dl-protect link via Botasaurus service
- * Cache is handled entirely by the Botasaurus service (local + remote)
+ * Serialize dl-protect resolutions: the Botasaurus service reuses a single
+ * browser instance and cannot handle concurrent requests (a second concurrent
+ * call returns an empty/failed response). Chain calls so they run one at a time.
  */
-export async function resolveDlProtectLink(url: string): Promise<string> {
+let resolveQueue: Promise<unknown> = Promise.resolve();
+
+/**
+ * Resolve a dl-protect link via Botasaurus service.
+ * Cache is handled entirely by the Botasaurus service (local + remote).
+ * Calls are serialized process-wide (see resolveQueue above).
+ */
+export function resolveDlProtectLink(url: string): Promise<string> {
+  const task = () => resolveDlProtectLinkInternal(url);
+  const result = resolveQueue.then(task, task);
+  // Keep the chain alive regardless of this call's outcome.
+  resolveQueue = result.then(() => undefined, () => undefined);
+  return result;
+}
+
+async function resolveDlProtectLinkInternal(url: string): Promise<string> {
   const config = getConfig();
   const cleanedUrl = cleanDlProtectUrl(url);
 

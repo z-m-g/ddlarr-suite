@@ -113,6 +113,18 @@ export const useTorrentsStore = defineStore('torrents', () => {
     }
   }
 
+  async function forceStartTorrents(hashes: string[]): Promise<void> {
+    const toast = useToastStore()
+    try {
+      await apiClient.forceStartTorrents(hashes)
+      await fetchTorrents()
+      toast.show('Download force started', 'success')
+    } catch (e: any) {
+      toast.show(`Failed to force start: ${e.message}`, 'error')
+      throw e
+    }
+  }
+
   async function deleteTorrents(hashes: string[], deleteFiles: boolean): Promise<void> {
     const toast = useToastStore()
     try {
@@ -156,6 +168,7 @@ export const useTorrentsStore = defineStore('torrents', () => {
     addFile,
     pauseTorrents,
     resumeTorrents,
+    forceStartTorrents,
     deleteTorrents,
     setFilter,
     checkAuth,
