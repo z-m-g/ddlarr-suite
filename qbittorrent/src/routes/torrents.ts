@@ -342,6 +342,24 @@ export async function torrentsRoutes(fastify: FastifyInstance): Promise<void> {
     return reply.send();
   });
 
+  // Force start torrents (bypass the concurrency limit)
+  fastify.post('/api/v2/torrents/setForceStart', async (request: FastifyRequest, reply: FastifyReply) => {
+    const body = request.body as { hashes?: string; value?: string };
+    const hashesParam = body.hashes || '';
+    console.log(`[Torrents] POST /setForceStart hashes=${hashesParam}`);
+
+    let hashes: string[];
+    if (hashesParam === 'all') {
+      hashes = downloadManager.getAll().map(d => d.hash);
+    } else {
+      // Normalize hashes to uppercase (Sonarr/Radarr may send lowercase)
+      hashes = hashesParam.split('|').filter(h => h).map(h => h.toUpperCase());
+    }
+
+    downloadManager.forceStart(hashes);
+    return reply.send();
+  });
+
   // Delete torrents
   fastify.post('/api/v2/torrents/delete', async (request: FastifyRequest, reply: FastifyReply) => {
     const body = request.body as { hashes?: string; deleteFiles?: string };

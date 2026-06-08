@@ -68,6 +68,10 @@ const canPause = computed(() =>
   props.torrent.state === 'downloading' || props.torrent.state === 'queuedDL'
 )
 
+const canForceStart = computed(() =>
+  props.torrent.state === 'queuedDL'
+)
+
 function formatSize(bytes: number): string {
   if (bytes === 0) return '0 B'
   const k = 1024
@@ -98,6 +102,15 @@ async function handlePauseResume() {
     } else {
       await store.pauseTorrents([props.torrent.hash])
     }
+  } finally {
+    actionPending.value = false
+  }
+}
+
+async function handleForceStart() {
+  actionPending.value = true
+  try {
+    await store.forceStartTorrents([props.torrent.hash])
   } finally {
     actionPending.value = false
   }
@@ -151,6 +164,19 @@ async function handleDelete() {
       </div>
 
       <div class="flex space-x-2 ml-4 flex-shrink-0">
+        <button
+          v-if="canForceStart"
+          @click="handleForceStart"
+          :disabled="actionPending"
+          title="Start now, bypassing the queue limit"
+          class="px-3 py-1 rounded text-sm font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <svg v-if="actionPending" class="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+          </svg>
+          <span v-else>Force start</span>
+        </button>
         <button
           v-if="canPause || isPaused"
           @click="handlePauseResume"

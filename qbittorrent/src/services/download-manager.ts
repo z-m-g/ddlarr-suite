@@ -131,6 +131,10 @@ class DownloadManager {
   private processing = false;
   // Track active debrid operations for cancellation
   private activeDebridOperations = new Map<string, { cancelled: boolean }>();
+  // Downloads parked while the debrid service caches the torrent/magnet
+  // server-side ("Queued on..."/"Downloading on debrid:"). They use no local
+  // bandwidth, so they don't occupy a local download slot.
+  private debridWaiting = new Set<string>();
   // Track retry attempts per download hash
   private retryCount = new Map<string, number>();
   private static readonly MAX_DOWNLOAD_RETRIES = 3;
@@ -477,6 +481,24 @@ class DownloadManager {
   }
 
   /**
+   * Force start downloads immediately, bypassing the concurrency limit.
+   * Useful when a download is stuck waiting in the queue.
+   */
+  forceStart(hashes: string[]): void {
+    for (const hash of hashes) {
+      const download = repository.getDownloadByHash(hash);
+      if (!download) continue;
+
+      if (download.state === 'queued' || download.state === 'paused') {
+        console.log(`[DownloadManager] Force starting: ${download.name}`);
+        // Start now without going through processQueue so the concurrency
+        // limit doesn't hold it back. startProcessing handles paused/resume.
+        this.startProcessingInBackground(download);
+      }
+    }
+  }
+
+  /**
    * Delete downloads
    */
   async delete(hashes: string[], deleteFiles: boolean): Promise<void> {
@@ -615,24 +637,67 @@ class DownloadManager {
 
     try {
       const config = getConfig();
-      const downloading = repository.getDownloadsByState('downloading');
-      const checking = repository.getDownloadsByState('checking');
-      const activeCount = downloading.length + checking.length;
+      const active = [
+        ...repository.getDownloadsByState('downloading'),
+        ...repository.getDownloadsByState('checking'),
+      ];
 
-      if (activeCount >= config.maxConcurrentDownloads) {
+      // Downloads parked waiting for the debrid service to cache the torrent
+      // server-side don't use any local bandwidth, so they don't count against
+      // the local download limit.
+      const localActive = active.filter(d => !this.debridWaiting.has(d.hash)).length;
+
+      // Local (actually transferring) downloads are capped by maxConcurrentDownloads.
+      // A bounded headroom lets a few extra torrents pre-cache on debrid in
+      // parallel so a long server-side wait never blocks the whole queue, without
+      // flooding the debrid service.
+      const localSlots = config.maxConcurrentDownloads - localActive;
+      const totalSlots = config.maxConcurrentDownloads * 2 - active.length;
+      const slotsAvailable = Math.min(localSlots, totalSlots);
+
+      if (slotsAvailable <= 0) {
         return;
       }
 
       const queued = repository.getDownloadsByState('queued');
-      const slotsAvailable = config.maxConcurrentDownloads - activeCount;
 
       for (let i = 0; i < Math.min(slotsAvailable, queued.length); i++) {
-        const download = queued[i];
-        await this.startProcessing(download);
+        // Kick off processing without awaiting: link resolution and debrid
+        // caching run in the background so they neither block the queue nor
+        // hold the processing lock. Each download drives further queue progress
+        // via processQueue() as its state changes.
+        this.startProcessingInBackground(queued[i]);
       }
     } finally {
       this.processing = false;
     }
+  }
+
+  /**
+   * Start processing a download in the background, isolating unexpected errors
+   * so one failure can never reject processQueue or stall the queue.
+   */
+  private startProcessingInBackground(download: Download): void {
+    this.startProcessing(download).catch((err: any) => {
+      console.error(`[DownloadManager] Unexpected error processing ${download.name}: ${err?.message || err}`);
+      this.debridWaiting.delete(download.hash);
+      const dl = repository.getDownloadByHash(download.hash);
+      if (dl && dl.state !== 'completed') {
+        repository.updateDownloadState(download.hash, 'error', err?.message || 'Processing failed');
+      }
+      this.processQueue();
+    });
+  }
+
+  /**
+   * Mark a download as waiting on the debrid service (server-side caching).
+   * Frees its local slot and lets the queue start another download. Triggering
+   * processQueue only on the first transition avoids re-running it on every poll.
+   */
+  private markDebridWaiting(hash: string): void {
+    if (this.debridWaiting.has(hash)) return;
+    this.debridWaiting.add(hash);
+    this.processQueue();
   }
 
   /**
@@ -763,9 +828,15 @@ class DownloadManager {
           } else if (status.status === 'downloading') {
             repository.updateDownloadStatusMessage(hash, `Downloading on debrid: ${status.progress}%`);
           }
+          // The torrent is being cached server-side: free our local slot so
+          // other downloads can start while we wait.
+          this.markDebridWaiting(hash);
         },
         timeoutMs
       );
+
+      // Server-side caching is done; reclaim the local slot for the actual download.
+      this.debridWaiting.delete(hash);
 
       // Check if cancelled after debrid completed
       if (operation.cancelled) {
@@ -962,6 +1033,7 @@ class DownloadManager {
     } finally {
       // Always clean up operation tracking
       this.activeDebridOperations.delete(hash);
+      this.debridWaiting.delete(hash);
     }
   }
 
@@ -998,9 +1070,15 @@ class DownloadManager {
           } else if (status.status === 'downloading') {
             repository.updateDownloadStatusMessage(hash, `Downloading on debrid: ${status.progress}%`);
           }
+          // The magnet is being cached server-side: free our local slot so
+          // other downloads can start while we wait.
+          this.markDebridWaiting(hash);
         },
         timeoutMs
       );
+
+      // Server-side caching is done; reclaim the local slot for the actual download.
+      this.debridWaiting.delete(hash);
 
       // Check if cancelled after debrid completed
       if (operation.cancelled) {
@@ -1202,6 +1280,7 @@ class DownloadManager {
     } finally {
       // Always clean up operation tracking
       this.activeDebridOperations.delete(hash);
+      this.debridWaiting.delete(hash);
     }
   }
 
