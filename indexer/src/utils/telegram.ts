@@ -6,19 +6,20 @@ const DEFAULT_TELEGRAM_CHANNELS = {
   zonetelecharger: 'https://t.me/ztofficiel',
 };
 
-// Cache for fetched URLs (to avoid fetching on every request)
-const urlCache: Record<string, { url: string; fetchedAt: number }> = {};
-const CACHE_TTL = 60 * 60 * 1000; // 1 hour in milliseconds
+// Timeout court pour la résolution: on résout à chaque requête, donc on préfère
+// retomber vite sur la dernière valeur connue plutôt que d'attendre si Telegram traîne.
+const TELEGRAM_FETCH_TIMEOUT = 5000;
 
 /**
  * Extract site URL from Telegram channel page
  * The URL is in the og:title meta tag, e.g.: <meta property="og:title" content="Wawacity.irish">
+ * Always performs a fresh fetch (no cache): the caller keeps the last known value as fallback.
  */
 export async function fetchSiteUrlFromTelegram(telegramUrl: string, siteName: string): Promise<string | null> {
   try {
     console.log(`[Telegram] Fetching site URL for ${siteName} from ${telegramUrl}`);
 
-    const html = await fetchHtml(telegramUrl);
+    const html = await fetchHtml(telegramUrl, { timeout: TELEGRAM_FETCH_TIMEOUT }, true);
 
     // Extract og:title content
     const ogTitleMatch = html.match(/<meta\s+property="og:title"\s+content="([^"]+)"/i);
@@ -48,32 +49,15 @@ export async function fetchSiteUrlFromTelegram(telegramUrl: string, siteName: st
 }
 
 /**
- * Get site URL from Telegram channel with caching
+ * Get site URL from Telegram channel.
+ * Always fresh: caching / fallback is handled by the caller (resolveSiteUrl in config).
  */
 export async function getSiteUrlFromTelegram(
   site: 'wawacity' | 'zonetelecharger',
   telegramUrl?: string
 ): Promise<string | null> {
-  const cacheKey = site;
-  const now = Date.now();
-
-  // Check cache first
-  const cached = urlCache[cacheKey];
-  if (cached && (now - cached.fetchedAt) < CACHE_TTL) {
-    console.log(`[Telegram] Using cached URL for ${site}: ${cached.url}`);
-    return cached.url;
-  }
-
-  // Fetch from Telegram
   const channelUrl = telegramUrl || DEFAULT_TELEGRAM_CHANNELS[site];
-  const siteUrl = await fetchSiteUrlFromTelegram(channelUrl, site);
-
-  if (siteUrl) {
-    // Cache the result
-    urlCache[cacheKey] = { url: siteUrl, fetchedAt: now };
-  }
-
-  return siteUrl;
+  return fetchSiteUrlFromTelegram(channelUrl, site);
 }
 
 /**

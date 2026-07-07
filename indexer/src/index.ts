@@ -30,7 +30,7 @@ async function start(): Promise<void> {
     await initializeSiteUrls();
 
     // Pre-warm Bookys cache in background (constructor triggers scrape)
-    getScraper('bookys');
+    void getScraper('bookys').catch(err => console.error('[Startup] Bookys pre-warm failed:', err));
 
     // Register routes
     await app.register(torznabRoutes);
