@@ -78,15 +78,23 @@ async function fetchDirect(url: string, configOpts?: AxiosRequestConfig): Promis
   return response.data;
 }
 
-export async function fetchHtml(url: string, configOpts?: AxiosRequestConfig): Promise<string> {
-  // Vérifie le cache d'abord
-  const cached = getCachedHtml(url);
-  if (cached) {
-    return cached;
+export async function fetchHtml(
+  url: string,
+  configOpts?: AxiosRequestConfig,
+  skipCache = false,
+): Promise<string> {
+  // Vérifie le cache d'abord (sauf si on force un fetch frais)
+  if (!skipCache) {
+    const cached = getCachedHtml(url);
+    if (cached) {
+      return cached;
+    }
   }
 
   const html = await fetchDirect(url, configOpts);
-  setCachedHtml(url, html);
+  if (!skipCache) {
+    setCachedHtml(url, html);
+  }
   return html;
 }
 

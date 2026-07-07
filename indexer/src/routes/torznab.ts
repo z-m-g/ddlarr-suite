@@ -288,7 +288,7 @@ async function handleTorznabRequest(
     return buildErrorResponse(100, `Unknown site: ${site}. Available: ${getAvailableSites().join(', ')}`);
   }
 
-  const scraper = getScraper(site as SiteType);
+  const scraper = await getScraper(site as SiteType);
   if (!scraper) {
     reply.type('application/xml');
     return buildErrorResponse(100, `Site ${site} is not configured`);
@@ -436,7 +436,7 @@ export async function torznabRoutes(app: FastifyInstance): Promise<void> {
 
     // Search all configured sites in parallel and aggregate results
     const siteSearches = sites.map(async (site) => {
-      const scraper = getScraper(site as SiteType);
+      const scraper = await getScraper(site as SiteType);
       if (!scraper) return [];
       try {
         return await fetchResults({ action, searchParams, categoryFilter, scraper, request });

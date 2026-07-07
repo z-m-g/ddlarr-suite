@@ -88,25 +88,70 @@ export async function initializeSiteUrls(): Promise<void> {
 }
 
 /**
- * Get site URL (resolved from env or Telegram)
+ * Get the last resolved site URL synchronously (from env or the latest resolution).
+ * Prefer resolveSiteUrl() on the request path to get a fresh value.
  */
 export function getSiteUrl(site: SiteType): string {
   return resolvedSiteUrls[site];
 }
 
+// Dedup concurrent resolutions so a burst of requests triggers a single Telegram fetch per site
+const inflightResolutions: Partial<Record<SiteType, Promise<string>>> = {};
+
 /**
- * Refresh site URLs from Telegram (for sites not configured via env)
+ * Resolve the current URL for a site, re-checking the source on every call (no time-based cache).
+ *
+ * - If the URL is pinned via an env var, it always wins (no network call).
+ * - Otherwise (wawacity/zonetelecharger) the domain is re-checked on Telegram every time.
+ *   If Telegram is unreachable, we fall back to the last known value (resolvedSiteUrls).
+ * - Other sites keep their statically resolved value (env / service / redirect resolved at boot).
+ */
+export async function resolveSiteUrl(site: SiteType): Promise<string> {
+  // Non-Telegram sites: static value resolved at boot / from env
+  if (site !== 'wawacity' && site !== 'zonetelecharger') {
+    return resolvedSiteUrls[site];
+  }
+
+  // Pinned via env var => absolute priority, no network call
+  if (config.sites[site]) {
+    return config.sites[site];
+  }
+
+  // Reuse an in-flight resolution if one is already running for this site
+  const existing = inflightResolutions[site];
+  if (existing) {
+    return existing;
+  }
+
+  const resolution = (async (): Promise<string> => {
+    const url = await getSiteUrlFromTelegram(site, config.telegram[site]);
+    if (url) {
+      if (url !== resolvedSiteUrls[site]) {
+        console.log(`[Config] ${site} URL updated: ${resolvedSiteUrls[site] || '(none)'} -> ${url}`);
+      }
+      resolvedSiteUrls[site] = url; // remember as fallback for next time
+      return url;
+    }
+    // Telegram unreachable => keep serving the last known URL
+    console.warn(`[Config] Telegram unavailable for ${site}, using last known URL: ${resolvedSiteUrls[site] || '(none)'}`);
+    return resolvedSiteUrls[site];
+  })();
+
+  inflightResolutions[site] = resolution;
+  try {
+    return await resolution;
+  } finally {
+    delete inflightResolutions[site];
+  }
+}
+
+/**
+ * Proactively refresh site URLs in the background so the fallback stays fresh even without traffic.
+ * (The request path already re-resolves on every call via resolveSiteUrl.)
  */
 async function refreshSiteUrls(): Promise<void> {
   const sites: TelegramSiteType[] = ['wawacity', 'zonetelecharger'];
-
-  for (const site of sites) {
-    const url = await getSiteUrlFromTelegram(site, config.telegram[site]);
-    if (url && url !== resolvedSiteUrls[site]) {
-      console.log(`[Config] ${site} URL updated: ${resolvedSiteUrls[site]} -> ${url}`);
-      resolvedSiteUrls[site] = url;
-    }
-  }
+  await Promise.all(sites.map(site => resolveSiteUrl(site).catch(() => undefined)));
 
   // Refresh darkiworld URL from redirect (not env vars)
   if (!config.sites.darkiworld) {
