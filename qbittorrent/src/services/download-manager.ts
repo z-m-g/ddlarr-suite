@@ -138,6 +138,12 @@ class DownloadManager {
   // Track retry attempts per download hash
   private retryCount = new Map<string, number>();
   private static readonly MAX_DOWNLOAD_RETRIES = 3;
+  // Track whole-download auto-restarts (multi-file torrents/magnets). When a
+  // single file fails with an unrecoverable link error (e.g. an expired debrid
+  // CDN link -> curl code 22), we re-process the whole download to fetch fresh
+  // links and resume from the failed file (already-downloaded files are skipped).
+  private autoRestartCount = new Map<string, number>();
+  private static readonly MAX_AUTO_RESTARTS = 3;
 
   /**
    * Get the path where torrent files are stored
@@ -472,9 +478,16 @@ class DownloadManager {
       const download = repository.getDownloadByHash(hash);
       if (!download) continue;
 
-      if (download.state === 'paused') {
+      if (download.state === 'paused' || download.state === 'error') {
+        // Manually relaunching a download (including a failed one) grants it a
+        // fresh set of retry/auto-restart attempts. Re-processing fetches fresh
+        // debrid links and, for multi-file torrents, skips already-downloaded
+        // files so it resumes where it left off instead of starting over.
+        this.retryCount.delete(hash);
+        this.autoRestartCount.delete(hash);
+        repository.updateDownloadStatusMessage(hash, null);
         repository.updateDownloadState(hash, 'queued');
-        console.log(`[DownloadManager] Resumed: ${hash}`);
+        console.log(`[DownloadManager] Resumed: ${hash} (was ${download.state})`);
       }
     }
     this.processQueue();
@@ -489,8 +502,17 @@ class DownloadManager {
       const download = repository.getDownloadByHash(hash);
       if (!download) continue;
 
-      if (download.state === 'queued' || download.state === 'paused') {
-        console.log(`[DownloadManager] Force starting: ${download.name}`);
+      if (download.state === 'queued' || download.state === 'paused' || download.state === 'error') {
+        console.log(`[DownloadManager] Force starting: ${download.name} (was ${download.state})`);
+        // Relaunching a failed download clears its old error/retry budgets and
+        // re-processes it (fresh links + skip already-downloaded files).
+        if (download.state === 'error') {
+          this.retryCount.delete(hash);
+          this.autoRestartCount.delete(hash);
+          repository.updateDownloadStatusMessage(hash, null);
+          repository.updateDownloadState(hash, 'queued');
+          download.state = 'queued';
+        }
         // Start now without going through processQueue so the concurrency
         // limit doesn't hold it back. startProcessing handles paused/resume.
         this.startProcessingInBackground(download);
@@ -508,6 +530,7 @@ class DownloadManager {
 
       // Clean up retry tracking
       this.retryCount.delete(hash);
+      this.autoRestartCount.delete(hash);
 
       // Cancel any active debrid operation (for real torrents in checking state)
       if (this.activeDebridOperations.has(hash)) {
@@ -740,9 +763,17 @@ class DownloadManager {
     const curlCode = this.getCurlExitCode(error);
     const currentRetries = this.retryCount.get(hash) || 0;
 
-    if (
+    // curl code 22 = HTTP >= 400 with --fail (curl already retried transient
+    // HTTP errors 3x internally, so at this point the link is dead — typically
+    // an expired debrid CDN link). Retrying the same URL is pointless, but if we
+    // can re-debrid to obtain a fresh link it is worth another attempt.
+    const canReDebrid = !!originalLink && isAnyDebridEnabled();
+    const isRetryable =
       curlCode !== null &&
-      RETRYABLE_CURL_CODES.has(curlCode) &&
+      (RETRYABLE_CURL_CODES.has(curlCode) || (curlCode === 22 && canReDebrid));
+
+    if (
+      isRetryable &&
       currentRetries < DownloadManager.MAX_DOWNLOAD_RETRIES
     ) {
       this.retryCount.set(hash, currentRetries + 1);
@@ -786,6 +817,39 @@ class DownloadManager {
       this.retryCount.delete(hash);
       failFn();
     }
+  }
+
+  /**
+   * Handle an unrecoverable failure of a single file inside a multi-file
+   * torrent/magnet. Instead of killing the whole download, re-queue it (bounded)
+   * so it re-processes: this fetches fresh debrid links and, thanks to the
+   * already-downloaded-file skipping in downloadNextFile, resumes at the failed
+   * file instead of restarting from scratch. Once the budget is exhausted the
+   * download is marked as error so the user can still relaunch it manually.
+   */
+  private handleMultiFileFailure(hash: string, fileNum: number, totalFiles: number, error: Error): void {
+    const restarts = this.autoRestartCount.get(hash) || 0;
+
+    if (restarts >= DownloadManager.MAX_AUTO_RESTARTS) {
+      this.autoRestartCount.delete(hash);
+      repository.updateDownloadState(hash, 'error', `File ${fileNum} failed: ${error.message}`);
+      console.error(`[DownloadManager] File ${fileNum}/${totalFiles} failed after ${restarts} auto-restart(s): ${error.message}`);
+      this.processQueue();
+      return;
+    }
+
+    this.autoRestartCount.set(hash, restarts + 1);
+    const attempt = restarts + 1;
+    console.log(`[DownloadManager] File ${fileNum}/${totalFiles} failed (${error.message}); auto-restarting whole download to refresh links, attempt ${attempt}/${DownloadManager.MAX_AUTO_RESTARTS}`);
+    repository.updateDownloadStatusMessage(hash, `File ${fileNum} failed, refreshing links (retry ${attempt}/${DownloadManager.MAX_AUTO_RESTARTS})...`);
+
+    // Small delay before re-queuing to avoid hammering the debrid service.
+    setTimeout(() => {
+      const dl = repository.getDownloadByHash(hash);
+      if (!dl || dl.state === 'completed') return;
+      repository.updateDownloadState(hash, 'queued');
+      this.processQueue();
+    }, 3000);
   }
 
   /**
@@ -942,6 +1006,7 @@ class DownloadManager {
         const downloadNextFile = async (index: number) => {
           if (index >= totalFiles) {
             // All files completed
+            this.autoRestartCount.delete(hash);
             repository.updateDownloadState(hash, 'completed');
             console.log(`[DownloadManager] Completed all ${totalFiles} files: ${name}`);
             this.processQueue();
@@ -961,6 +1026,24 @@ class DownloadManager {
           }
 
           repository.updateDownloadStatusMessage(hash, `File ${index + 1}/${totalFiles}: ${filename}`);
+
+          // Resume support: a file only lands in the final folder once curl has
+          // fully downloaded it (temp -> move on success), so an existing file is
+          // proof of completion. Skip it so a re-processed download resumes at the
+          // failed file instead of re-downloading everything from scratch.
+          const existingFilePath = path.join(torrentFolder, filename);
+          try {
+            const existing = fs.statSync(existingFilePath);
+            if (existing.isFile() && existing.size > 0) {
+              completedFiles++;
+              totalDownloaded += existing.size;
+              console.log(`[DownloadManager] Skipping already-downloaded file ${index + 1}/${totalFiles}: ${filename}`);
+              downloadNextFile(index + 1);
+              return;
+            }
+          } catch {
+            // Not on disk yet — download it below.
+          }
 
           // Use a unique hash for each file download to avoid conflicts
           const fileHash = `${hash}_file_${index}`;
@@ -999,10 +1082,10 @@ class DownloadManager {
                 (freshUrl) => startDownload(fileHash, freshUrl, filename, {
                   onProgress: (p) => { const pct = totalFiles > 1 ? Math.round(((completedFiles + (p.progress / 100)) / totalFiles) * 100) : p.progress; repository.updateDownloadProgress(hash, totalDownloaded + p.downloadedBytes, 0, p.downloadSpeed); },
                   onComplete: (fp) => { this.retryCount.delete(fileHash); completedFiles++; try { const s = fs.statSync(fp); totalDownloaded += s.size; } catch {} downloadNextFile(index + 1); },
-                  onError: (e) => { this.retryCount.delete(fileHash); repository.updateDownloadState(hash, 'error', `File ${index + 1} failed: ${e.message}`); this.processQueue(); },
+                  onError: (e) => { this.retryCount.delete(fileHash); this.handleMultiFileFailure(hash, index + 1, totalFiles, e); },
                   onPaused: () => { console.log(`[DownloadManager] Download paused at file ${index + 1}/${totalFiles}`); },
                 }, undefined, torrentFolder),
-                () => { repository.updateDownloadState(hash, 'error', `File ${index + 1} failed: ${error.message}`); console.error(`[DownloadManager] Error on file ${index + 1}: ${error.message}`); this.processQueue(); },
+                () => this.handleMultiFileFailure(hash, index + 1, totalFiles, error),
               );
             },
             onPaused: () => {
@@ -1189,6 +1272,7 @@ class DownloadManager {
         const downloadNextFile = async (index: number) => {
           if (index >= totalFiles) {
             // All files completed
+            this.autoRestartCount.delete(hash);
             repository.updateDownloadState(hash, 'completed');
             console.log(`[DownloadManager] Completed all ${totalFiles} files: ${name}`);
             this.processQueue();
@@ -1208,6 +1292,24 @@ class DownloadManager {
           }
 
           repository.updateDownloadStatusMessage(hash, `File ${index + 1}/${totalFiles}: ${filename}`);
+
+          // Resume support: a file only lands in the final folder once curl has
+          // fully downloaded it (temp -> move on success), so an existing file is
+          // proof of completion. Skip it so a re-processed download resumes at the
+          // failed file instead of re-downloading everything from scratch.
+          const existingFilePath = path.join(torrentFolder, filename);
+          try {
+            const existing = fs.statSync(existingFilePath);
+            if (existing.isFile() && existing.size > 0) {
+              completedFiles++;
+              totalDownloaded += existing.size;
+              console.log(`[DownloadManager] Skipping already-downloaded file ${index + 1}/${totalFiles}: ${filename}`);
+              downloadNextFile(index + 1);
+              return;
+            }
+          } catch {
+            // Not on disk yet — download it below.
+          }
 
           // Use a unique hash for each file download to avoid conflicts
           const fileHash = `${hash}_file_${index}`;
@@ -1246,10 +1348,10 @@ class DownloadManager {
                 (freshUrl) => startDownload(fileHash, freshUrl, filename, {
                   onProgress: (p) => { const pct = totalFiles > 1 ? Math.round(((completedFiles + (p.progress / 100)) / totalFiles) * 100) : p.progress; repository.updateDownloadProgress(hash, totalDownloaded + p.downloadedBytes, 0, p.downloadSpeed); },
                   onComplete: (fp) => { this.retryCount.delete(fileHash); completedFiles++; try { const s = fs.statSync(fp); totalDownloaded += s.size; } catch {} downloadNextFile(index + 1); },
-                  onError: (e) => { this.retryCount.delete(fileHash); repository.updateDownloadState(hash, 'error', `File ${index + 1} failed: ${e.message}`); this.processQueue(); },
+                  onError: (e) => { this.retryCount.delete(fileHash); this.handleMultiFileFailure(hash, index + 1, totalFiles, e); },
                   onPaused: () => { console.log(`[DownloadManager] Download paused at file ${index + 1}/${totalFiles}`); },
                 }, undefined, torrentFolder),
-                () => { repository.updateDownloadState(hash, 'error', `File ${index + 1} failed: ${error.message}`); console.error(`[DownloadManager] Error on file ${index + 1}: ${error.message}`); this.processQueue(); },
+                () => this.handleMultiFileFailure(hash, index + 1, totalFiles, error),
               );
             },
             onPaused: () => {
