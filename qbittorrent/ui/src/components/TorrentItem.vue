@@ -163,7 +163,9 @@ async function handleDelete() {
         </div>
       </div>
 
-      <div class="flex space-x-2 ml-4 flex-shrink-0">
+      <!-- No flex-shrink-0: the buttons wrap onto a second line on narrow screens rather
+           than forcing the card wider than the viewport -->
+      <div class="flex flex-wrap justify-end gap-2 ml-2 sm:ml-4">
         <button
           v-if="canForceStart"
           @click="handleForceStart"
@@ -228,12 +230,12 @@ async function handleDelete() {
     </div>
 
     <!-- Stats -->
-    <div class="flex items-center justify-between text-sm text-gray-500">
-      <div class="flex space-x-4">
+    <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm text-gray-500">
+      <div class="flex flex-wrap gap-x-4">
         <span>{{ progressPercent }}%</span>
         <span>{{ formatSize(displayDownloaded) }} / {{ formatSize(torrent.size) }}</span>
       </div>
-      <div class="flex space-x-4">
+      <div class="flex flex-wrap gap-x-4">
         <span v-if="torrent.state === 'downloading'">
           {{ formatSpeed(torrent.dlspeed) }}
         </span>

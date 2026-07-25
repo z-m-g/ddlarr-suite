@@ -86,13 +86,15 @@ async function bulkDelete() {
 <template>
   <div>
     <!-- Filters -->
-    <div class="flex space-x-2 mb-4">
+    <!-- flex-wrap + gap (not space-x) so the row breaks onto a second line on narrow
+         screens instead of overflowing the viewport -->
+    <div class="flex flex-wrap gap-2 mb-4">
       <button
         v-for="f in filters"
         :key="f.value"
         @click="store.setFilter(f.value)"
         :class="[
-          'px-4 py-2 rounded-md font-medium transition-colors',
+          'px-3 sm:px-4 py-2 rounded-md font-medium transition-colors',
           store.filter === f.value
             ? 'bg-blue-600 text-white'
             : 'bg-white text-gray-700 hover:bg-gray-100'
@@ -104,11 +106,11 @@ async function bulkDelete() {
 
     <!-- Bulk action bar -->
     <Transition name="slide-down">
-      <div v-if="someSelected" class="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 mb-4">
+      <div v-if="someSelected" class="flex flex-wrap items-center gap-3 bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 mb-4">
         <span class="text-sm text-blue-700 font-medium">
           {{ selectedHashes.size }} selected
         </span>
-        <div class="flex gap-2 ml-auto">
+        <div class="flex flex-wrap gap-2 ml-auto">
           <button
             @click="bulkResume"
             :disabled="bulkPending"
