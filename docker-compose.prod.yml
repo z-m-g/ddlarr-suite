@@ -29,6 +29,7 @@ services:
       - BOOKYS_URL=${BOOKYS_URL:-}
       - BOOKYS_HOSTER=${BOOKYS_HOSTER:-1fichier}
       - FLARESOLVERR_URL=${FLARESOLVERR_URL:-http://flaresolverr:8191}
+      - TMDB_API_KEY=${TMDB_API_KEY:-}
     depends_on:
       dlprotect-resolver:
         condition: service_healthy

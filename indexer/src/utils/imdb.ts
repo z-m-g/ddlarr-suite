@@ -1,8 +1,13 @@
 import { fetchJson } from './http.js';
+import { config } from '../config.js';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const IMDB_API_BASE = 'https://api.imdbapi.dev';
+// Titles are resolved from Wikidata (no API key required). When TMDB_API_KEY is set,
+// TMDB is queried first since its coverage and French titles are more reliable.
+// The previous source (api.imdbapi.dev) is gone: the domain is parked and no longer resolves.
+const WIKIDATA_SPARQL_ENDPOINT = 'https://query.wikidata.org/sparql';
+const TMDB_API_BASE = 'https://api.themoviedb.org/3';
 
 // Cache file path (persistent across restarts)
 const CACHE_DIR = process.env.CACHE_DIR || './cache';
@@ -40,27 +45,27 @@ function saveCache(): void {
 // Load cache on module initialization
 loadCache();
 
-interface ImdbTitle {
-  id: string;
-  type: string;
-  primaryTitle: string;
-  originalTitle: string;
+interface SparqlBinding {
+  value: string;
+  'xml:lang'?: string;
 }
 
-interface ImdbAka {
-  text: string;
-  country?: {
-    code: string;
-    name: string;
-  };
-  language?: {
-    code: string;
-    name: string;
+interface SparqlResponse {
+  results?: {
+    bindings?: Record<string, SparqlBinding>[];
   };
 }
 
-interface ImdbAkasResponse {
-  akas: ImdbAka[];
+interface TmdbFindResult {
+  title?: string; // movies, localized to the requested language
+  original_title?: string;
+  name?: string; // TV shows, localized to the requested language
+  original_name?: string;
+}
+
+interface TmdbFindResponse {
+  movie_results?: TmdbFindResult[];
+  tv_results?: TmdbFindResult[];
 }
 
 export interface ImdbTitles {
@@ -79,56 +84,107 @@ export function normalizeImdbId(imdbId: string): string {
   return `tt${imdbId}`;
 }
 
-/**
- * Fetch original title from IMDB API
- * Falls back to primaryTitle if originalTitle is not available
- */
-export async function fetchOriginalTitle(imdbId: string): Promise<string | null> {
-  const normalizedId = normalizeImdbId(imdbId);
-  const url = `${IMDB_API_BASE}/titles/${normalizedId}`;
-
-  try {
-    console.log(`[IMDB] Fetching title info for ${normalizedId}`);
-    const data = await fetchJson<ImdbTitle>(url);
-    const title = data.originalTitle || data.primaryTitle || null;
-    console.log(`[IMDB] Original title: "${title}"${!data.originalTitle && data.primaryTitle ? ' (from primaryTitle)' : ''}`);
-    return title;
-  } catch (error) {
-    console.error(`[IMDB] Error fetching title:`, error);
-    return null;
-  }
+function buildWikidataQuery(imdbId: string): string {
+  return `SELECT ?title ?origLangCode ?frLabel ?enLabel ?frSitelink ?enSitelink WHERE {
+  ?item wdt:P345 "${imdbId}".
+  OPTIONAL { ?item wdt:P1476 ?title. }
+  OPTIONAL { ?item wdt:P364 ?origLang. ?origLang wdt:P218 ?origLangCode. }
+  OPTIONAL { ?item rdfs:label ?frLabel. FILTER(lang(?frLabel) = "fr") }
+  OPTIONAL { ?item rdfs:label ?enLabel. FILTER(lang(?enLabel) = "en") }
+  OPTIONAL { ?frArticle schema:about ?item; schema:isPartOf <https://fr.wikipedia.org/>; schema:name ?frSitelink. }
+  OPTIONAL { ?enArticle schema:about ?item; schema:isPartOf <https://en.wikipedia.org/>; schema:name ?enSitelink. }
+} LIMIT 50`;
 }
 
 /**
- * Fetch French title from IMDB API (akas endpoint)
+ * Collect the distinct values bound to a SPARQL variable, preserving result order
  */
-export async function fetchFrenchTitle(imdbId: string): Promise<string | null> {
-  const normalizedId = normalizeImdbId(imdbId);
-  const url = `${IMDB_API_BASE}/titles/${normalizedId}/akas`;
-
-  try {
-    console.log(`[IMDB] Fetching akas for ${normalizedId}`);
-    const data = await fetchJson<ImdbAkasResponse>(url);
-
-    // Find French title (country code "FR")
-    const frenchAka = data.akas.find(aka => aka.country?.code === 'FR');
-
-    if (frenchAka) {
-      console.log(`[IMDB] French title: "${frenchAka.text}"`);
-      return frenchAka.text;
+function collectBindings(rows: Record<string, SparqlBinding>[], key: string): SparqlBinding[] {
+  const seen = new Set<string>();
+  const bindings: SparqlBinding[] = [];
+  for (const row of rows) {
+    const binding = row[key];
+    if (binding && !seen.has(binding.value)) {
+      seen.add(binding.value);
+      bindings.push(binding);
     }
-
-    console.log(`[IMDB] No French title found`);
-    return null;
-  } catch (error) {
-    console.error(`[IMDB] Error fetching akas:`, error);
-    return null;
   }
+  return bindings;
 }
 
 /**
- * Fetch both original and French titles from IMDB API
- * Results are cached since IMDB data never changes
+ * Fetch original and French titles from Wikidata (no API key required)
+ */
+async function fetchFromWikidata(normalizedId: string): Promise<ImdbTitles | null> {
+  // The ID is interpolated into the SPARQL query, so only accept the canonical shape
+  if (!/^tt\d+$/.test(normalizedId)) {
+    console.warn(`[IMDB] Malformed IMDB ID, skipping Wikidata lookup: ${normalizedId}`);
+    return null;
+  }
+
+  console.log(`[IMDB] Fetching titles from Wikidata for ${normalizedId}`);
+  const data = await fetchJson<SparqlResponse>(WIKIDATA_SPARQL_ENDPOINT, {
+    params: { query: buildWikidataQuery(normalizedId), format: 'json' },
+    headers: { Accept: 'application/sparql-results+json' },
+  });
+
+  const rows = data.results?.bindings ?? [];
+  if (rows.length === 0) {
+    console.log(`[IMDB] No Wikidata entity for ${normalizedId}`);
+    return null;
+  }
+
+  const titles = collectBindings(rows, 'title');
+  const frLabels = collectBindings(rows, 'frLabel');
+  const enLabels = collectBindings(rows, 'enLabel');
+  const frSitelinks = collectBindings(rows, 'frSitelink');
+  const enSitelinks = collectBindings(rows, 'enSitelink');
+  const originalLanguage = collectBindings(rows, 'origLangCode')[0]?.value;
+
+  // Some items carry no label at all (e.g. Q79784 "Friends"), so fall back on the Wikipedia
+  // article name, which is the release title in that language.
+  const frenchTitle = frLabels[0]?.value ?? frSitelinks[0]?.value ?? null;
+
+  // P1476 ("title") is the most accurate original title, but a work can carry several
+  // (working titles, renames). Only trust it when exactly one matches the original language.
+  const titlesInOriginalLanguage = originalLanguage
+    ? titles.filter(title => title['xml:lang'] === originalLanguage)
+    : [];
+  const originalTitle = titlesInOriginalLanguage.length === 1
+    ? titlesInOriginalLanguage[0].value
+    : enSitelinks[0]?.value ?? enLabels[0]?.value ?? titles[0]?.value ?? null;
+
+  return { originalTitle, frenchTitle };
+}
+
+/**
+ * Fetch original and French titles from TMDB (requires TMDB_API_KEY)
+ */
+async function fetchFromTmdb(normalizedId: string): Promise<ImdbTitles | null> {
+  console.log(`[IMDB] Fetching titles from TMDB for ${normalizedId}`);
+  const data = await fetchJson<TmdbFindResponse>(`${TMDB_API_BASE}/find/${normalizedId}`, {
+    params: {
+      api_key: config.tmdbApiKey,
+      external_source: 'imdb_id',
+      language: 'fr-FR',
+    },
+  });
+
+  const match = data.movie_results?.[0] ?? data.tv_results?.[0];
+  if (!match) {
+    console.log(`[IMDB] No TMDB match for ${normalizedId}`);
+    return null;
+  }
+
+  return {
+    originalTitle: match.original_title ?? match.original_name ?? null,
+    frenchTitle: match.title ?? match.name ?? null,
+  };
+}
+
+/**
+ * Fetch both original and French titles, trying each configured source in order
+ * Results are cached since the data never changes
  */
 export async function fetchImdbTitles(imdbId: string): Promise<ImdbTitles> {
   const normalizedId = normalizeImdbId(imdbId);
@@ -140,16 +196,30 @@ export async function fetchImdbTitles(imdbId: string): Promise<ImdbTitles> {
     return cached;
   }
 
-  // Fetch both in parallel
-  const [originalTitle, frenchTitle] = await Promise.all([
-    fetchOriginalTitle(imdbId),
-    fetchFrenchTitle(imdbId),
-  ]);
+  // TMDB first when a key is configured (better coverage), Wikidata otherwise / as fallback
+  const sources: { name: string; fetch: () => Promise<ImdbTitles | null> }[] = [];
+  if (config.tmdbApiKey) {
+    sources.push({ name: 'TMDB', fetch: () => fetchFromTmdb(normalizedId) });
+  }
+  sources.push({ name: 'Wikidata', fetch: () => fetchFromWikidata(normalizedId) });
 
-  const result: ImdbTitles = { originalTitle, frenchTitle };
+  let result: ImdbTitles = { originalTitle: null, frenchTitle: null };
+
+  for (const source of sources) {
+    try {
+      const titles = await source.fetch();
+      if (titles && (titles.originalTitle || titles.frenchTitle)) {
+        console.log(`[IMDB] ${source.name}: original="${titles.originalTitle}", french="${titles.frenchTitle}"`);
+        result = titles;
+        break;
+      }
+    } catch (error) {
+      console.error(`[IMDB] ${source.name} lookup failed for ${normalizedId}:`, error);
+    }
+  }
 
   // Only cache successful results (at least one title found)
-  if (originalTitle || frenchTitle) {
+  if (result.originalTitle || result.frenchTitle) {
     imdbTitlesCache[normalizedId] = result;
     saveCache();
     console.log(`[IMDB] Cached titles for ${normalizedId}`);
@@ -185,7 +255,7 @@ export async function getSearchQueriesFromImdb(imdbId: string, fallbackQuery?: s
   }
 
   if (queries.size === 0) {
-    console.warn(`[IMDB] No search queries available for ${imdbId} - IMDB API returned no titles and no fallback query provided`);
+    console.warn(`[IMDB] No search queries available for ${imdbId} - no title source returned a match and no fallback query provided`);
   } else {
     console.log(`[IMDB] Search queries: ${Array.from(queries).join(', ')}`);
   }
