@@ -36,6 +36,29 @@ docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
 ```
 
+### Versions des images
+
+Chaque release publie les images sur GHCR sous plusieurs tags. `docker-compose.prod.yml` utilise `latest` par défaut.
+
+| Tag | Exemple | Pointe vers |
+|---|---|---|
+| `latest` | `ddl-torznab:latest` | La dernière release publiée |
+| `X.Y.Z` | `ddl-torznab:1.1.0` | Une version figée, ne bouge jamais |
+| `X.Y` | `ddl-torznab:1.1` | La dernière correction de la ligne mineure (suit les `1.1.x`) |
+| `<sha>` | `ddl-torznab:9e58b36` | Le commit exact de la release |
+
+Pour épingler une version précise, remplacez le tag dans votre `docker-compose.prod.yml` :
+
+```yaml
+services:
+  ddl-torznab:
+    image: ghcr.io/z-m-g/ddl-torznab:1.1.0   # au lieu de :latest
+```
+
+Les 4 images (`ddl-torznab`, `dlprotect-resolver`, `ddl-qbittorrent`, `darkiworld`) suivent la même numérotation : gardez-les sur la même version. Les notes de la release sont attachées aux images comme description OCI, visible sur la page du package GHCR.
+
+> Les prereleases (`v1.2.0-rc1`) ne reçoivent volontairement ni tag de version ni `latest` : elles restent accessibles uniquement par leur sha.
+
 **Configure in Radarr/Sonarr:**
 1. Add Indexer: Settings > Indexers > Torznab > URL: `http://<IP>:9117` > API Path: `/api/wawacity` (ou `/api/bookys` pour les ebooks)
 2. Add Download Client: Settings > Download Clients > qBittorrent > Host: `<IP>`, Port: `8080`
