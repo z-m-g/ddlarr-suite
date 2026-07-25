@@ -4,6 +4,15 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag to publish under, e.g. v1.1.0 (leave empty to tag by commit sha only)'
+        type: string
+        default: ''
+      force_manifest_push:
+        description: 'Push the manifest even if the image content is unchanged (use to (re)apply tags/annotations)'
+        type: boolean
+        default: false
 
 env:
   REGISTRY: ghcr.io
@@ -42,7 +51,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           # Build the released tag, not the branch head
-          ref: ${{ github.event.release.tag_name || github.ref }}
+          ref: ${{ github.event.release.tag_name || inputs.release_tag || github.ref }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -117,6 +126,12 @@ jobs:
           new_digests=$(ls -1 | sed 's/^/sha256:/' | sort | tr '\n' ' ' | xargs)
           echo "New digests: $new_digests"
 
+          if [ "${{ inputs.force_manifest_push }}" = "true" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Forced manifest push for ${{ matrix.image }}"
+            exit 0
+          fi
+
           image="${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.image }}:latest"
           if raw=$(docker buildx imagetools inspect "$image" --raw 2>/dev/null); then
             current_digests=$(echo "$raw" | jq -r '.manifests[].digest' | sort | tr '\n' ' ' | xargs)
@@ -141,26 +156,73 @@ jobs:
             type=raw,value=latest,enable=${{ github.event_name != 'release' || !github.event.release.prerelease }}
             type=sha,prefix=
 
+      # The release payload only exists on a release event, so on workflow_dispatch the notes are
+      # read back from the tag. Without this, re-running against a tag would overwrite the
+      # published description with a placeholder.
+      - name: Resolve release metadata
+        id: release
+        if: steps.check.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_BODY: ${{ github.event.release.body }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag || (github.ref_type == 'tag' && github.ref_name || '') }}
+          RELEASE_URL: ${{ github.event.release.html_url }}
+          RELEASE_PUBLISHED_AT: ${{ github.event.release.published_at }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/release
+          : > /tmp/release/notes.md
+
+          url="${RELEASE_URL:-}"
+          published_at="${RELEASE_PUBLISHED_AT:-}"
+          revision="${GITHUB_SHA}"
+
+          # On a forced retag the run sits on a branch, so resolve the tag's own commit
+          if [ -n "${RELEASE_TAG:-}" ]; then
+            revision=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}" --jq .sha 2>/dev/null || echo "${GITHUB_SHA}")
+          fi
+
+          if [ -n "${RELEASE_BODY:-}" ]; then
+            printf '%s' "$RELEASE_BODY" > /tmp/release/notes.md
+          elif [ -n "${RELEASE_TAG:-}" ]; then
+            # No release payload (workflow_dispatch): read it back from the tag
+            if meta=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+                        --json body,url,publishedAt 2>/dev/null); then
+              jq -r '.body // ""' <<< "$meta" > /tmp/release/notes.md
+              url="${url:-$(jq -r '.url // ""' <<< "$meta")}"
+              published_at="${published_at:-$(jq -r '.publishedAt // ""' <<< "$meta")}"
+            else
+              echo "::warning::No release found for tag ${RELEASE_TAG}"
+            fi
+          fi
+
+          {
+            echo "url=${url}"
+            echo "published_at=${published_at}"
+            echo "revision=${revision}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Resolved $(wc -c < /tmp/release/notes.md) bytes of release notes"
+
       # The release notes are attached to the image index as the OCI description, which is what
-      # the GHCR package page renders. The body is passed through the environment (never inlined
-      # into the script) so multi-line notes and shell metacharacters stay inert.
+      # the GHCR package page renders. The body is read from a file (never inlined into the
+      # script) so multi-line notes and shell metacharacters stay inert.
       - name: Create manifest list and push
         if: steps.check.outputs.changed == 'true'
         working-directory: /tmp/digests
         env:
           IMAGE: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.image }}
           IMAGE_NAME: ${{ matrix.image }}
-          RELEASE_BODY: ${{ github.event.release.body }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-          RELEASE_URL: ${{ github.event.release.html_url }}
-          RELEASE_PUBLISHED_AT: ${{ github.event.release.published_at }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag || (github.ref_type == 'tag' && github.ref_name || '') }}
+          RELEASE_URL: ${{ steps.release.outputs.url }}
+          RELEASE_PUBLISHED_AT: ${{ steps.release.outputs.published_at }}
+          RELEASE_REVISION: ${{ steps.release.outputs.revision }}
           SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}
         run: |
           set -euo pipefail
 
           version="${RELEASE_TAG:-${GITHUB_SHA:0:7}}"
 
-          description="${RELEASE_BODY:-}"
+          description="$(cat /tmp/release/notes.md)"
           # Strip whitespace to detect an empty or whitespace-only release body
           if [ -z "${description//[[:space:]]/}" ]; then
             description="Release ${version}"
@@ -171,10 +233,17 @@ jobs:
             [ -n "$tag" ] && args+=(-t "$tag")
           done < <(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
 
+          # Version tags derived from the release tag: v1.1.0 -> :1.1.0 and :1.1 (sliding minor).
+          # The strict pattern deliberately excludes prereleases such as v1.2.0-rc1.
+          if [[ "${RELEASE_TAG}" =~ ^v?([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            args+=(-t "${IMAGE}:${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}")
+            args+=(-t "${IMAGE}:${BASH_REMATCH[1]}.${BASH_REMATCH[2]}")
+          fi
+
           args+=(--annotation "index:org.opencontainers.image.title=${IMAGE_NAME}")
           args+=(--annotation "index:org.opencontainers.image.description=${description}")
           args+=(--annotation "index:org.opencontainers.image.version=${version}")
-          args+=(--annotation "index:org.opencontainers.image.revision=${GITHUB_SHA}")
+          args+=(--annotation "index:org.opencontainers.image.revision=${RELEASE_REVISION:-$GITHUB_SHA}")
           args+=(--annotation "index:org.opencontainers.image.source=${SOURCE_URL}")
           args+=(--annotation "index:org.opencontainers.image.url=${RELEASE_URL:-$SOURCE_URL}")
           args+=(--annotation "index:org.opencontainers.image.created=${RELEASE_PUBLISHED_AT:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}")
