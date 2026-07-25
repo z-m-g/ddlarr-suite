@@ -30,6 +30,9 @@ export const config = {
   searchMaxPages: parseInt(process.env.SEARCH_MAX_PAGES || '5', 10),
   disableRemoteDlProtectCache: process.env.DISABLE_REMOTE_DL_PROTECT_CACHE === 'true',
   bookysHoster: process.env.BOOKYS_HOSTER || '1fichier',
+
+  // Optional TMDB key: when set, titles are resolved via TMDB instead of Wikidata (better coverage)
+  tmdbApiKey: process.env.TMDB_API_KEY || '',
 } as const;
 
 // Resolved site URLs (populated at initialization or from env)

@@ -519,18 +519,34 @@ DEBUG=true
 
 ### Recherche intelligente via IMDB
 
-Quand Radarr/Sonarr fournit un IMDB ID, l'indexeur utilise l'API IMDB (https://imdbapi.dev) pour récupérer :
+Quand Radarr/Sonarr fournit un IMDB ID, l'indexeur résout :
 - Le **titre original** du film/série
 - Le **titre français**
 
-Ces titres sont utilisés en plus de la requête originale pour une recherche plus complète, notamment pour les films français avec des accents.
+Ces titres sont utilisés en plus de la requête originale pour une recherche plus complète, notamment pour les films français avec des accents. Les résultats sont mis en cache dans `imdb-titles.json` (les titres ne changent pas).
 
 **Exemple :**
 ```
-Radarr envoie: imdbid=0082183
-→ API IMDB retourne: originalTitle="La chèvre", frenchTitle="La Chèvre"
-→ Recherches effectuées: ["la chèvre"]
+Radarr envoie: imdbid=0944947
+→ Résolution: originalTitle="Game of Thrones", frenchTitle="Le Trône de fer"
+→ Recherches effectuées: ["game of thrones", "le trône de fer"]
 ```
+
+**Sources de titres**
+
+| Source | Clé API | Quand |
+|---|---|---|
+| [Wikidata](https://query.wikidata.org/) | non | Par défaut, aucune configuration requise |
+| [TMDB](https://www.themoviedb.org/) | oui | Utilisée en priorité si `TMDB_API_KEY` est défini |
+
+Wikidata suffit dans la grande majorité des cas. Définir une clé TMDB (gratuite) améliore la couverture, surtout sur les titres récents ou peu connus ; si TMDB ne répond pas, Wikidata prend le relais automatiquement.
+
+```bash
+# Dans .env (optionnel)
+TMDB_API_KEY=votre_cle
+```
+
+> **Note :** l'ancienne source `api.imdbapi.dev` a été abandonnée (domaine parké, plus aucun enregistrement DNS). Si vous voyez des erreurs `ENOTFOUND api.imdbapi.dev`, mettez à jour vers une version incluant ce changement.
 
 ### Cache distant dl-protect
 
