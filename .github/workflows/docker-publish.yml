@@ -1,9 +1,8 @@
 name: Build and Push Docker Images
 
 on:
-  push:
-    branches:
-      - release
+  release:
+    types: [published]
   workflow_dispatch:
 
 env:
@@ -41,6 +40,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          # Build the released tag, not the branch head
+          ref: ${{ github.event.release.tag_name || github.ref }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -136,12 +138,50 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.image }}
           tags: |
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ github.event_name != 'release' || !github.event.release.prerelease }}
             type=sha,prefix=
 
+      # The release notes are attached to the image index as the OCI description, which is what
+      # the GHCR package page renders. The body is passed through the environment (never inlined
+      # into the script) so multi-line notes and shell metacharacters stay inert.
       - name: Create manifest list and push
         if: steps.check.outputs.changed == 'true'
         working-directory: /tmp/digests
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.image }}
+          IMAGE_NAME: ${{ matrix.image }}
+          RELEASE_BODY: ${{ github.event.release.body }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_URL: ${{ github.event.release.html_url }}
+          RELEASE_PUBLISHED_AT: ${{ github.event.release.published_at }}
+          SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}
         run: |
-          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf '${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.image }}@sha256:%s ' *)
+          set -euo pipefail
+
+          version="${RELEASE_TAG:-${GITHUB_SHA:0:7}}"
+
+          description="${RELEASE_BODY:-}"
+          # Strip whitespace to detect an empty or whitespace-only release body
+          if [ -z "${description//[[:space:]]/}" ]; then
+            description="Release ${version}"
+          fi
+
+          args=()
+          while IFS= read -r tag; do
+            [ -n "$tag" ] && args+=(-t "$tag")
+          done < <(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+
+          args+=(--annotation "index:org.opencontainers.image.title=${IMAGE_NAME}")
+          args+=(--annotation "index:org.opencontainers.image.description=${description}")
+          args+=(--annotation "index:org.opencontainers.image.version=${version}")
+          args+=(--annotation "index:org.opencontainers.image.revision=${GITHUB_SHA}")
+          args+=(--annotation "index:org.opencontainers.image.source=${SOURCE_URL}")
+          args+=(--annotation "index:org.opencontainers.image.url=${RELEASE_URL:-$SOURCE_URL}")
+          args+=(--annotation "index:org.opencontainers.image.created=${RELEASE_PUBLISHED_AT:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}")
+
+          digests=()
+          for digest in *; do
+            digests+=("${IMAGE}@sha256:${digest}")
+          done
+
+          docker buildx imagetools create "${args[@]}" "${digests[@]}"
