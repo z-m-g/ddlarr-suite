@@ -13,7 +13,7 @@ export { contentTypeToCategory } from './base.js';
 const scraperCache = new Map<SiteType, BaseScraper>();
 
 export async function getScraper(site: SiteType): Promise<BaseScraper | null> {
-  // Resolve the current URL on every call (fresh from Telegram for wawacity/zt).
+  // Resolve the current URL on every call (fresh from Mastodon for wawacity/zt).
   const url = await resolveSiteUrl(site);
   if (!url) {
     return null;

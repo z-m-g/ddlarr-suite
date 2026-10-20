@@ -26,7 +26,7 @@ const app = Fastify({
 
 async function start(): Promise<void> {
   try {
-    // Initialize site URLs (fetch from Telegram if not configured)
+    // Initialize site URLs (fetch from Mastodon if not configured)
     await initializeSiteUrls();
 
     // Pre-warm Bookys cache in background (constructor triggers scrape)

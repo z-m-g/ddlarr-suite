@@ -1,5 +1,5 @@
 import { config as dotenvConfig } from 'dotenv';
-import { getSiteUrlFromTelegram, getDefaultTelegramChannel } from './utils/telegram.js';
+import { getSiteUrlFromMastodon, getDefaultMastodonProfile } from './utils/mastodon.js';
 import { getUrlAfterRedirect } from './utils/http.js';
 
 dotenvConfig();
@@ -28,10 +28,10 @@ export const config = {
     maxMedia: parseInt(process.env.LOADIX_MAX_MEDIA || '10', 10),
   },
 
-  // Telegram channel URLs for dynamic URL resolution
-  telegram: {
-    wawacity: process.env.WAWACITY_TELEGRAM || getDefaultTelegramChannel('wawacity'),
-    zonetelecharger: process.env.ZONETELECHARGER_TELEGRAM || getDefaultTelegramChannel('zonetelecharger'),
+  // Mastodon profiles whose bio carries the current site URL (dynamic URL resolution)
+  mastodon: {
+    wawacity: process.env.WAWACITY_MASTODON || getDefaultMastodonProfile('wawacity'),
+    zonetelecharger: process.env.ZONETELECHARGER_MASTODON || getDefaultMastodonProfile('zonetelecharger'),
   },
 
   flaresolverrUrl: process.env.FLARESOLVERR_URL || '',
@@ -61,29 +61,29 @@ const resolvedSiteUrls: Record<SiteType, string> = {
 
 export type SiteType = 'wawacity' | 'zonetelecharger' | 'darkiworld' | 'darkiworld-premium' | 'bookys' | 'loadix';
 
-// Sites that use Telegram for URL resolution (excludes darkiworld-premium which is a service)
-type TelegramSiteType = 'wawacity' | 'zonetelecharger';
+// Sites whose URL is read from a Mastodon profile (excludes darkiworld-premium which is a service)
+type MastodonSiteType = 'wawacity' | 'zonetelecharger';
 
 /**
- * Initialize site URLs - fetches from Telegram or redirect if not configured in env
+ * Initialize site URLs - fetches from Mastodon or redirect if not configured in env
  * Should be called at application startup
  */
 export async function initializeSiteUrls(): Promise<void> {
-  const sites: TelegramSiteType[] = ['wawacity', 'zonetelecharger'];
+  const sites: MastodonSiteType[] = ['wawacity', 'zonetelecharger'];
 
   for (const site of sites) {
     if (config.sites[site]) {
       console.log(`[Config] ${site} URL configured (fallback): ${config.sites[site]}`);
     }
-    console.log(`[Config] Fetching ${site} URL from Telegram...`);
-    const url = await getSiteUrlFromTelegram(site, config.telegram[site]);
+    console.log(`[Config] Fetching ${site} URL from Mastodon...`);
+    const url = await getSiteUrlFromMastodon(site, config.mastodon[site]);
     if (url) {
       resolvedSiteUrls[site] = url;
-      console.log(`[Config] ${site} URL resolved from Telegram: ${url}`);
+      console.log(`[Config] ${site} URL resolved from Mastodon: ${url}`);
     } else if (config.sites[site]) {
-      console.warn(`[Config] Telegram resolution failed for ${site}, using env fallback: ${config.sites[site]}`);
+      console.warn(`[Config] Mastodon resolution failed for ${site}, using env fallback: ${config.sites[site]}`);
     } else {
-      console.warn(`[Config] Could not resolve ${site} URL from Telegram and no env fallback`);
+      console.warn(`[Config] Could not resolve ${site} URL from Mastodon and no env fallback`);
     }
   }
 
@@ -123,19 +123,19 @@ export function getSiteUrl(site: SiteType): string {
   return resolvedSiteUrls[site];
 }
 
-// Dedup concurrent resolutions so a burst of requests triggers a single Telegram fetch per site
+// Dedup concurrent resolutions so a burst of requests triggers a single Mastodon fetch per site
 const inflightResolutions: Partial<Record<SiteType, Promise<string>>> = {};
 
 /**
  * Resolve the current URL for a site, re-checking the source on every call (no time-based cache).
  *
  * - If the URL is pinned via an env var, it always wins (no network call).
- * - Otherwise (wawacity/zonetelecharger) the domain is re-checked on Telegram every time.
- *   If Telegram is unreachable, we fall back to the last known value (resolvedSiteUrls).
+ * - Otherwise (wawacity/zonetelecharger) the domain is re-checked on Mastodon every time.
+ *   If Mastodon is unreachable, we fall back to the last known value (resolvedSiteUrls).
  * - Other sites keep their statically resolved value (env / service / redirect resolved at boot).
  */
 export async function resolveSiteUrl(site: SiteType): Promise<string> {
-  // Non-Telegram sites: static value resolved at boot / from env
+  // Non-Mastodon sites: static value resolved at boot / from env
   if (site !== 'wawacity' && site !== 'zonetelecharger') {
     return resolvedSiteUrls[site];
   }
@@ -152,7 +152,7 @@ export async function resolveSiteUrl(site: SiteType): Promise<string> {
   }
 
   const resolution = (async (): Promise<string> => {
-    const url = await getSiteUrlFromTelegram(site, config.telegram[site]);
+    const url = await getSiteUrlFromMastodon(site, config.mastodon[site]);
     if (url) {
       if (url !== resolvedSiteUrls[site]) {
         console.log(`[Config] ${site} URL updated: ${resolvedSiteUrls[site] || '(none)'} -> ${url}`);
@@ -160,8 +160,8 @@ export async function resolveSiteUrl(site: SiteType): Promise<string> {
       resolvedSiteUrls[site] = url; // remember as fallback for next time
       return url;
     }
-    // Telegram unreachable => keep serving the last known URL
-    console.warn(`[Config] Telegram unavailable for ${site}, using last known URL: ${resolvedSiteUrls[site] || '(none)'}`);
+    // Mastodon unreachable => keep serving the last known URL
+    console.warn(`[Config] Mastodon unavailable for ${site}, using last known URL: ${resolvedSiteUrls[site] || '(none)'}`);
     return resolvedSiteUrls[site];
   })();
 
@@ -178,7 +178,7 @@ export async function resolveSiteUrl(site: SiteType): Promise<string> {
  * (The request path already re-resolves on every call via resolveSiteUrl.)
  */
 async function refreshSiteUrls(): Promise<void> {
-  const sites: TelegramSiteType[] = ['wawacity', 'zonetelecharger'];
+  const sites: MastodonSiteType[] = ['wawacity', 'zonetelecharger'];
   await Promise.all(sites.map(site => resolveSiteUrl(site).catch(() => undefined)));
 
   // Refresh darkiworld URL from redirect (not env vars)
@@ -193,12 +193,12 @@ async function refreshSiteUrls(): Promise<void> {
 
 // Refresh site URLs every hour
 setInterval(() => {
-  console.log('[Config] Refreshing site URLs from Telegram...');
+  console.log('[Config] Refreshing site URLs from Mastodon...');
   refreshSiteUrls().catch(err => console.error('[Config] Error refreshing URLs:', err));
 }, 60 * 60 * 1000); // 1 hour
 
 /**
- * Check if site is configured (has a URL either from env or resolved from Telegram)
+ * Check if site is configured (has a URL either from env or resolved from Mastodon)
  */
 export function isSiteConfigured(site: SiteType): boolean {
   return Boolean(resolvedSiteUrls[site]);

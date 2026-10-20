@@ -47,13 +47,14 @@ Chaque release publie les images sur GHCR sous plusieurs tags. `docker-compose.p
 | `X.Y` | `ddl-torznab:1.1` | La dernière correction de la ligne mineure (suit les `1.1.x`) |
 | `<sha>` | `ddl-torznab:9e58b36` | Le commit exact de la release |
 
-Pour épingler une version précise, remplacez le tag dans votre `docker-compose.prod.yml` :
+Pour épingler une version précise, renseignez `DDLARR_VERSION` dans votre `.env` : `docker-compose.prod.yml` l'applique aux quatre images (`latest` par défaut).
 
-```yaml
-services:
-  ddl-torznab:
-    image: ghcr.io/z-m-g/ddl-torznab:1.1.0   # au lieu de :latest
+```bash
+# Dans .env
+DDLARR_VERSION=1.3      # ou 1.3.0 pour une version figée
 ```
+
+Les pre-releases publient leurs tags de version mais ne déplacent jamais `latest` : c'est le moyen de les tester sans toucher aux installations qui suivent `latest`.
 
 Les 4 images (`ddl-torznab`, `dlprotect-resolver`, `ddl-qbittorrent`, `darkiworld`) suivent la même numérotation : gardez-les sur la même version. Les notes de la release sont attachées aux images comme description OCI, visible sur la page du package GHCR.
 
@@ -98,14 +99,14 @@ Cette approche utilise un dossier blackhole et un client de téléchargement ext
 
 ## Sites supportés
 
-| Site | Variable ENV | Telegram | Description |
+| Site | Variable ENV | Mastodon | Description |
 |------|--------------|----------|-------------|
-| WawaCity | `WAWACITY_URL` | [@Wawacityofficiel](https://t.me/s/Wawacityofficiel) | Scraping HTML |
-| Zone-Téléchargement | `ZONETELECHARGER_URL` | [@ztofficiel](https://t.me/s/ztofficiel) | Scraping HTML |
+| WawaCity | `WAWACITY_URL` | [@wawacity](https://mamot.fr/@wawacity) | Scraping HTML |
+| Zone-Téléchargement | `ZONETELECHARGER_URL` | [@ZT](https://mamot.fr/@ZT) | Scraping HTML |
 | Bookys | `BOOKYS_URL` | - | Journaux, magazines, ebooks |
 | Loadix | `LOADIX_URL` | - | Films, séries, animes (API JSON, compte requis) |
 
-> **Auto-détection des URLs** : Si les variables `WAWACITY_URL` ou `ZONETELECHARGER_URL` sont vides, les URLs sont automatiquement récupérées depuis les canaux Telegram officiels.
+> **Auto-détection des URLs** : Si les variables `WAWACITY_URL` ou `ZONETELECHARGER_URL` sont vides, les URLs sont lues dans la bio des comptes Mastodon officiels (« Url officielle : … »), via l'API publique de l'instance.
 
 > **Bookys** : L'URL actuelle est `https://www7.bookys-ebooks.com` (pas d'auto-détection : à mettre à jour si le domaine change). Le site est protégé par Cloudflare : configurer FlareSolverr (voir ci-dessous). Seuls les liens des hébergeurs listés dans `BOOKYS_HOSTER` sont gardés (`1fichier` par défaut) ; la plupart des journaux récents ne sont plus que sur Nitroflare, utiliser par exemple `BOOKYS_HOSTER=nitroflare,1fichier`.
 
@@ -129,7 +130,7 @@ cp .env.example .env
 Éditer le fichier `.env` :
 
 ```bash
-# URLs des sites (optionnel - auto-détection depuis Telegram si vide)
+# URLs des sites (optionnel - auto-détection depuis Mastodon si vide)
 # Laissez vide pour utiliser l'auto-détection, ou forcez une URL spécifique
 WAWACITY_URL=
 ZONETELECHARGER_URL=
@@ -149,7 +150,7 @@ BLACKHOLE_PATH=/chemin/vers/blackhole
 ALLDEBRID_API_KEY=votre_cle_api
 ```
 
-> **Note** : Les URLs des sites changent régulièrement. L'auto-détection depuis Telegram permet de toujours avoir les URLs à jour sans modifier la configuration.
+> **Note** : Les URLs des sites changent régulièrement. L'auto-détection depuis Mastodon permet de toujours avoir les URLs à jour sans modifier la configuration.
 
 ### 3. Lancer les services
 
@@ -521,8 +522,8 @@ Voir `.env.example` pour la liste complète.
 | `FLARESOLVERR_URL` | URL du service FlareSolverr (optionnel) | - |
 | `FLARESOLVERR_TIMEOUT` | Temps max (ms) pour résoudre un challenge Cloudflare | 120000 |
 | `FLARESOLVERR_RETRIES` | Nombre d'essais par page via FlareSolverr | 3 |
-| `WAWACITY_TELEGRAM` | Canal Telegram WawaCity pour auto-détection | https://t.me/s/Wawacityofficiel |
-| `ZONETELECHARGER_TELEGRAM` | Canal Telegram ZT pour auto-détection | https://t.me/s/ztofficiel |
+| `WAWACITY_MASTODON` | Profil Mastodon WawaCity pour auto-détection | https://mamot.fr/@wawacity |
+| `ZONETELECHARGER_MASTODON` | Profil Mastodon ZT pour auto-détection | https://mamot.fr/@ZT |
 | `BLACKHOLE_PATH` | Dossier blackhole | - |
 | `ALLDEBRID_API_KEY` | Clé API AllDebrid | - |
 | `DLPROTECT_RESOLVE_AT` | Où résoudre les liens dl-protect (voir ci-dessous) | indexer |
@@ -533,7 +534,7 @@ Voir `.env.example` pour la liste complète.
 | `JD_ENABLED` | Activer JDownloader | false |
 | `ARIA2_ENABLED` | Activer aria2 | false |
 
-> Les URLs des sites sont auto-détectées depuis Telegram au démarrage si non configurées. Vous pouvez forcer une URL en la définissant explicitement.
+> Les URLs des sites sont auto-détectées depuis Mastodon au démarrage, puis revérifiées à chaque recherche, si elles ne sont pas configurées. Vous pouvez forcer une URL en la définissant explicitement.
 
 ### Résolution des liens dl-protect
 
