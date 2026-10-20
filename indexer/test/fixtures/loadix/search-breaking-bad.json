@@ -1,0 +1,28 @@
+{
+  "hits": [
+    {
+      "id": "4674a63c-ff00-40c8-9aa3-895b47a70964",
+      "type": "series",
+      "title": "Breaking Bad",
+      "originalTitle": "Breaking Bad",
+      "titleAlt": [],
+      "year": 2008,
+      "tmdbId": 1396,
+      "hasLinks": true,
+      "languagesAvailable": [
+        "MULTi VFF",
+        "MULTI"
+      ],
+      "qualitiesAvailable": [
+        "Blu-Ray 1080p",
+        "ULTRA HD (x265)",
+        "HDLight 1080p (x265)",
+        "HDLight 1080p",
+        "WEB 1080p"
+      ]
+    }
+  ],
+  "estimatedTotalHits": 1,
+  "page": 1,
+  "hitsPerPage": 20
+}

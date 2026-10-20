@@ -432,6 +432,7 @@ export function renderHomePage(host: string): string {
         <li><code>/api/zonetelecharger/turbobit</code> - uniquement Turbobit</li>
         <li><code>/api/wawacity/1fichier,rapidgator</code> - 1fichier ou Rapidgator</li>
         <li><code>/api/darkiworld-premium/1fichier</code> - uniquement 1fichier sur DarkiWorld</li>
+        <li><code>/api/loadix/1fichier</code> - uniquement 1fichier sur Loadix</li>
       </ul>
       <p style="margin-top: 0.75rem;">Hébergeurs courants : <code>1fichier</code>, <code>turbobit</code>, <code>rapidgator</code>, <code>uptobox</code>, <code>nitroflare</code></p>
     </div>
@@ -762,6 +763,9 @@ function getSiteName(site: string): string {
     wawacity: 'WawaCity',
     zonetelecharger: 'Zone-Téléchargement',
     darkiworld: 'DarkiWorld',
+    'darkiworld-premium': 'DarkiWorld Premium',
+    bookys: 'Bookys',
+    loadix: 'Loadix',
   };
   return names[site] || site;
 }

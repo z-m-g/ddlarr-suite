@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  node:
+    name: ${{ matrix.service }} (typecheck + tests)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [indexer, qbittorrent, downloader]
+    defaults:
+      run:
+        working-directory: ${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ${{ matrix.service }}/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  qbittorrent-ui:
+    name: qbittorrent UI (build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: qbittorrent/ui
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: qbittorrent/ui/package-lock.json
+      - run: npm ci
+      - run: npm run build
+
+  resolver:
+    name: dlprotect-resolver (tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: botasaurus-service
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: botasaurus-service/requirements-test.txt
+      - run: pip install -r requirements-test.txt
+      - run: python -m pytest tests -q
+
+  compose:
+    name: docker compose (config)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker compose -f docker-compose.yml config -q
+      - run: docker compose -f docker-compose.prod.yml config -q

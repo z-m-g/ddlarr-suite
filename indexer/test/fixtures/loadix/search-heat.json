@@ -1,0 +1,70 @@
+{
+  "hits": [
+    {
+      "id": "ebc89b67-3fa6-475c-8c5e-5236e8a594bb",
+      "type": "movie",
+      "title": "Heat",
+      "originalTitle": "Heat",
+      "titleAlt": [],
+      "year": 1995,
+      "tmdbId": 949,
+      "hasLinks": true,
+      "languagesAvailable": [
+        "VFF",
+        "MULTI VFF",
+        "MULTi VF2",
+        "MULTi VFF"
+      ],
+      "qualitiesAvailable": [
+        "HDLight 1080p",
+        "ULTRA HD (x265)",
+        "WEB",
+        "Blu-Ray 1080p",
+        "Ultra HDLight (x265)",
+        "4K",
+        "REMUX UHD",
+        "REMUX BLURAY",
+        "WEB 1080p (x265)",
+        "Blu-Ray 1080p (x265)"
+      ]
+    },
+    {
+      "id": "71b452f8-b60f-4ef1-96fb-7f42ac42794b",
+      "type": "movie",
+      "title": "Killer Heat",
+      "originalTitle": "Killer Heat",
+      "titleAlt": [],
+      "year": 2024,
+      "tmdbId": 1108566,
+      "hasLinks": true,
+      "languagesAvailable": [
+        "MULTi VF2"
+      ],
+      "qualitiesAvailable": [
+        "ULTRA HD (x265)",
+        "WEB 1080p",
+        "WEB 1080p (x265)",
+        "WEB 1080p Light"
+      ]
+    },
+    {
+      "id": "6a06a380-6132-400f-ac28-b7cbf6047010",
+      "type": "movie",
+      "title": "The Big Heat",
+      "originalTitle": "城巿特警",
+      "titleAlt": [],
+      "year": 1988,
+      "tmdbId": 104259,
+      "hasLinks": true,
+      "languagesAvailable": [
+        "VOSTFR"
+      ],
+      "qualitiesAvailable": [
+        "DVDRIP MKV"
+      ]
+    }
+  ],
+  "estimatedTotalHits": 3,
+  "page": 1,
+  "hitsPerPage": 20
+}

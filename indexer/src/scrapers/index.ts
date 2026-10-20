@@ -4,6 +4,7 @@ import { WawacityScraper } from './wawacity.js';
 import { ZoneTelechargerScraper } from './zonetelecharger.js';
 import { DarkiworldPremiumScraper } from './darkiworld.js';
 import { BookysScraper } from './bookys.js';
+import { LoadixScraper } from './loadix.js';
 import { SiteType, isSiteConfigured, resolveSiteUrl } from '../config.js';
 
 export type { BaseScraper } from './base.js';
@@ -40,6 +41,9 @@ export async function getScraper(site: SiteType): Promise<BaseScraper | null> {
     case 'bookys':
       scraper = new BookysScraper(url);
       break;
+    case 'loadix':
+      scraper = new LoadixScraper(url);
+      break;
     default:
       return null;
   }
@@ -49,10 +53,10 @@ export async function getScraper(site: SiteType): Promise<BaseScraper | null> {
 }
 
 export function getAvailableSites(): SiteType[] {
-  const sites: SiteType[] = ['wawacity', 'zonetelecharger', 'darkiworld-premium', 'bookys'];
+  const sites: SiteType[] = ['wawacity', 'zonetelecharger', 'darkiworld-premium', 'bookys', 'loadix'];
   return sites.filter((site) => isSiteConfigured(site));
 }
 
 export function isValidSite(site: string): site is SiteType {
-  return ['wawacity', 'zonetelecharger', 'darkiworld-premium', 'bookys'].includes(site);
+  return ['wawacity', 'zonetelecharger', 'darkiworld-premium', 'bookys', 'loadix'].includes(site);
 }

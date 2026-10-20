@@ -177,7 +177,11 @@ export class BookysScraper implements BaseScraper {
       const html = await fetchHtmlSmart(searchUrl);
       // Filter only /journaux/ results
       const allItems = this.parseListPage(html);
-      const journauxItems = allItems.filter(item => item.pageUrl.includes('/journaux/'));
+      // Search results are not sorted by date: item IDs grow over time, so newest first
+      const itemId = (item: BookysItem) => parseInt(item.pageUrl.match(/\/journaux\/(\d+)/)?.[1] || '0', 10);
+      const journauxItems = allItems
+        .filter(item => item.pageUrl.includes('/journaux/'))
+        .sort((a, b) => itemId(b) - itemId(a));
 
       console.log(`[Bookys] Search returned ${allItems.length} items, ${journauxItems.length} journaux`);
       return journauxItems;
@@ -208,6 +212,15 @@ export class BookysScraper implements BaseScraper {
       } catch {
         // Skip invalid items
       }
+    });
+
+    // Search results page: table rows with a plain title link
+    $('#search_table a.bys-link').each((_, element) => {
+      const href = $(element).attr('href');
+      const title = $(element).text().trim();
+      if (!href || !title) return;
+      const pageUrl = href.startsWith('http') ? href : `${this.baseUrl}${href}`;
+      items.push({ title, pageUrl });
     });
 
     return items;

@@ -1,0 +1,73 @@
+# Keeps dependencies current through pull requests, each checked by the CI workflow.
+# Minor and patch updates are grouped per service so they arrive as one PR; a major
+# update comes in its own PR, since it usually needs code changes and a decision.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /indexer
+    schedule:
+      interval: weekly
+    groups:
+      indexer-minor:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      # vue-tsc does not support the TypeScript 7 compiler yet; TypeScript is
+      # upgraded for all packages at once, so the services wait for the UI
+      - dependency-name: typescript
+        versions: [">=7"]
+  - package-ecosystem: npm
+    directory: /qbittorrent
+    schedule:
+      interval: weekly
+    groups:
+      qbittorrent-minor:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      # vue-tsc does not support the TypeScript 7 compiler yet; TypeScript is
+      # upgraded for all packages at once, so the services wait for the UI
+      - dependency-name: typescript
+        versions: [">=7"]
+  - package-ecosystem: npm
+    directory: /qbittorrent/ui
+    schedule:
+      interval: weekly
+    groups:
+      qbittorrent-ui-minor:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      # vue-tsc does not support the TypeScript 7 compiler yet
+      - dependency-name: typescript
+        versions: [">=7"]
+      # Tailwind 4 changes the configuration model; to be migrated deliberately
+      - dependency-name: tailwindcss
+        versions: [">=4"]
+  - package-ecosystem: npm
+    directory: /downloader
+    schedule:
+      interval: weekly
+    groups:
+      downloader-minor:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      # vue-tsc does not support the TypeScript 7 compiler yet; TypeScript is
+      # upgraded for all packages at once, so the services wait for the UI
+      - dependency-name: typescript
+        versions: [">=7"]
+  - package-ecosystem: pip
+    directory: /botasaurus-service
+    schedule:
+      interval: weekly
+    groups:
+      resolver:
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

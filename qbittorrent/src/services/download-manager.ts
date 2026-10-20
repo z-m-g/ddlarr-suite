@@ -9,6 +9,7 @@ import {
 } from '../utils/torrent.js';
 import { isDlProtectLink, resolveDlProtectLink } from '../utils/dlprotect.js';
 import { isBookysLink, resolveBookysLink } from '../utils/bookys.js';
+import { isLoadixLink, resolveLoadixLink } from '../utils/loadix.js';
 import { debridLink, debridTorrent, debridMagnet, isAnyDebridEnabled, getTorrentEnabledServices } from '../debrid/index.js';
 import { startDownload, stopDownload, pauseDownload, getDownloadProgress, isDownloadActive, isDownloadPaused, getPausedDownloadInfo, RETRYABLE_CURL_CODES } from './downloader.js';
 import * as repository from '../db/repository.js';
@@ -795,11 +796,16 @@ class DownloadManager {
 
       try {
         let freshUrl = originalLink;
+        if (originalLink) {
+          // The stored original link may be an intermediate one (dl-protect, Bookys,
+          // Loadix): resolve it again to get a hoster URL before re-debriding.
+          freshUrl = await this.resolveHosterLink(originalLink);
+        }
         // Re-debrid only for DDL downloads where we have an original (pre-debrid) link
-        if (originalLink && isAnyDebridEnabled()) {
+        if (freshUrl && isAnyDebridEnabled()) {
           repository.updateDownloadStatusMessage(hash, `Retry ${attempt}/${DownloadManager.MAX_DOWNLOAD_RETRIES}: re-debriding...`);
-          const debridedUrl = await debridLink(originalLink);
-          if (debridedUrl && debridedUrl !== originalLink) {
+          const debridedUrl = await debridLink(freshUrl);
+          if (debridedUrl && debridedUrl !== freshUrl) {
             repository.updateDownloadLink(hash, debridedUrl);
             freshUrl = debridedUrl;
           }
@@ -817,6 +823,23 @@ class DownloadManager {
       this.retryCount.delete(hash);
       failFn();
     }
+  }
+
+  /**
+   * Turn an intermediate link (dl-protect, Bookys, Loadix) into the hoster URL.
+   * Plain hoster links are returned unchanged.
+   */
+  private async resolveHosterLink(link: string): Promise<string> {
+    if (isDlProtectLink(link)) {
+      link = await resolveDlProtectLink(link);
+    }
+    if (isBookysLink(link)) {
+      link = await resolveBookysLink(link);
+    }
+    if (isLoadixLink(link)) {
+      link = await resolveLoadixLink(link);
+    }
+    return link;
   }
 
   /**
@@ -1505,6 +1528,24 @@ class DownloadManager {
         } catch (error: any) {
           repository.updateDownloadState(hash, 'error', `Bookys resolution failed: ${error.message}`);
           console.error(`[DownloadManager] Bookys resolution failed: ${error.message}`);
+          this.processQueue();
+          return;
+        }
+      }
+
+      // Reveal Loadix links (authenticated API call → final hoster link)
+      if (isLoadixLink(link)) {
+        repository.updateDownloadStatusMessage(hash, 'Revealing Loadix link...');
+        console.log(`[DownloadManager] Revealing Loadix link...`);
+        try {
+          const resolvedLink = await resolveLoadixLink(link);
+          if (!resolvedLink || resolvedLink === link) {
+            throw new Error('Failed to reveal Loadix link');
+          }
+          link = resolvedLink;
+        } catch (error: any) {
+          repository.updateDownloadState(hash, 'error', `Loadix reveal failed: ${error.message}`);
+          console.error(`[DownloadManager] Loadix reveal failed: ${error.message}`);
           this.processQueue();
           return;
         }

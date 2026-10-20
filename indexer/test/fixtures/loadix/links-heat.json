@@ -1,0 +1,71 @@
+{
+  "items": [
+    {
+      "id": "b8647072-79a7-4420-b523-5700a79c7091",
+      "mediaId": "ebc89b67-3fa6-475c-8c5e-5236e8a594bb",
+      "scope": "series",
+      "seasonNumber": null,
+      "episodeNumber": null,
+      "provider": "1fichier",
+      "linkType": "ddl_url",
+      "quality": "HDLight 1080p",
+      "language": "VFF",
+      "sizeBytes": "3450000000",
+      "releaseName": "HEAT.1995.VersionDynamic.VFF.1080p.x264.mkv",
+      "releaseGroup": "",
+      "status": "validated",
+      "addedAt": "2026-09-25T06:30:59.879Z"
+    },
+    {
+      "id": "43807a1c-7f1a-45f1-8eae-574ecc383030",
+      "mediaId": "ebc89b67-3fa6-475c-8c5e-5236e8a594bb",
+      "scope": "series",
+      "seasonNumber": null,
+      "episodeNumber": null,
+      "provider": "1fichier",
+      "linkType": "ddl_url",
+      "quality": "Blu-Ray 1080p (x265)",
+      "language": "MULTi VF2",
+      "sizeBytes": "8540000000",
+      "releaseName": null,
+      "releaseGroup": "Heat 1995 MULTi VF2 1080p BluRay HDR10 E-AC3 x265-Winks.mkv",
+      "status": "validated",
+      "addedAt": "2026-09-13T12:54:53.112Z"
+    },
+    {
+      "id": "d62326e4-58f1-4518-9e1f-3ae309c8b744",
+      "mediaId": "ebc89b67-3fa6-475c-8c5e-5236e8a594bb",
+      "scope": "series",
+      "seasonNumber": null,
+      "episodeNumber": null,
+      "provider": "1fichier",
+      "linkType": "ddl_url",
+      "quality": "4K",
+      "language": "MULTI VFF",
+      "sizeBytes": "66171502592",
+      "releaseName": null,
+      "releaseGroup": "heat.1995.complete.uhd.bluray-guhzer.iso",
+      "status": "validated",
+      "addedAt": "2026-08-02T23:23:41.742Z"
+    },
+    {
+      "id": "4bba371a-5750-458d-be30-4289424d2250",
+      "mediaId": "ebc89b67-3fa6-475c-8c5e-5236e8a594bb",
+      "scope": "series",
+      "seasonNumber": null,
+      "episodeNumber": null,
+      "provider": "1fichier",
+      "linkType": "ddl_url",
+      "quality": "REMUX UHD",
+      "language": "MULTI VFF",
+      "sizeBytes": "58342959301",
+      "releaseName": null,
+      "releaseGroup": "Heat.1995.MULTi.TRUEFRENCH.2160p.UHD.BluRay.REMUX.HEVC-Zapax.mkv",
+      "status": "validated",
+      "addedAt": "2026-08-02T23:23:40.409Z"
+    }
+  ],
+  "total": 4,
+  "page": 1,
+  "perPage": 100
+}

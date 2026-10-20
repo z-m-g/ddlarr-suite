@@ -1,15 +1,16 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import chokidar from 'chokidar';
+import { watch, type FSWatcher } from 'chokidar';
 import { getConfig } from './utils/config.js';
 import { extractLinkFromTorrent, extractNameFromTorrent } from './utils/torrent.js';
 import { addDownloadToAll, getEnabledClients } from './clients/index.js';
 import { debridLink, isAnyDebridEnabled, getEnabledDebridServices } from './debrid/index.js';
 import { isDlProtectLink, resolveDlProtectLink } from './utils/dlprotect.js';
+import { isLoadixLink, resolveLoadixLink } from './utils/loadix.js';
 
 const DEBUG = process.env.DEBUG === 'true' || process.env.NODE_ENV === 'development';
 
-let watcher: chokidar.FSWatcher | null = null;
+let watcher: FSWatcher | null = null;
 let scanInterval: NodeJS.Timeout | null = null;
 
 // Get the processing directory path
@@ -94,6 +95,23 @@ async function processFile(filePath: string): Promise<void> {
       console.error(`[Watcher] DL-Protect resolution error: ${error.message}`);
       // Move to failed and stop
       moveToFailed(processingFilePath, 'dlprotect-error');
+      return;
+    }
+  }
+
+  // Reveal Loadix links (authenticated API call → final hoster link)
+  if (isLoadixLink(link)) {
+    console.log(`[Watcher] Revealing Loadix link...`);
+    try {
+      const resolvedLink = await resolveLoadixLink(link);
+      if (!resolvedLink || resolvedLink === link) {
+        throw new Error('Failed to reveal Loadix link');
+      }
+      console.log(`[Watcher] Revealed Loadix link: ${resolvedLink}`);
+      link = resolvedLink;
+    } catch (error: any) {
+      console.error(`[Watcher] Loadix reveal error: ${error.message}`);
+      moveToFailed(processingFilePath, 'loadix-error');
       return;
     }
   }
@@ -201,13 +219,15 @@ export function startWatcher(): void {
   }
 
   // Watch for new files (only root directory)
-  watcher = chokidar.watch(config.blackholePath, {
-    ignored: [
-      /(^|[\/\\])\../, // Ignore dotfiles
-      '**/processing/**', // Ignore processing folder
-      '**/processed/**', // Ignore processed folder
-      '**/failed/**', // Ignore failed folder
-    ],
+  // chokidar 4+ no longer understands globs: ignore dotfiles and our own subfolders by path
+  const ignoredFolders = new Set(['processing', 'processed', 'failed']);
+  watcher = watch(config.blackholePath, {
+    ignored: (filePath: string) => {
+      const relative = path.relative(config.blackholePath, filePath);
+      if (!relative) return false;
+      const parts = relative.split(/[\/\\]/);
+      return parts.some(part => part.startsWith('.') || ignoredFolders.has(part));
+    },
     persistent: true,
     ignoreInitial: true, // We already processed existing files
     depth: 0, // Only watch the blackhole folder itself, not subdirectories
@@ -217,12 +237,12 @@ export function startWatcher(): void {
     },
   });
 
-  watcher.on('add', (filePath) => {
+  watcher.on('add', (filePath: string) => {
     console.log(`[Watcher] New file detected: ${filePath}`);
     processFile(filePath).catch(console.error);
   });
 
-  watcher.on('error', (error) => {
+  watcher.on('error', (error: unknown) => {
     console.error('[Watcher] Error:', error);
   });
 

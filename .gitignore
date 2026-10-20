@@ -24,6 +24,9 @@ vendor/
 # Build
 dist/
 build/
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
 *.cache
 cache/
 downloader-config/
@@ -36,3 +39,6 @@ downloads/
 *.temp
 *.swp
 *~
+# Python
+__pycache__/
+.pytest_cache/

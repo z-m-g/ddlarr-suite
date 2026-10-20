@@ -42,6 +42,46 @@ function extractFinalLink(html: string): string | undefined {
   return undefined;
 }
 
+const FLARESOLVERR_TIMEOUT = parseInt(process.env.FLARESOLVERR_TIMEOUT || '120000', 10);
+const FLARESOLVERR_RETRIES = parseInt(process.env.FLARESOLVERR_RETRIES || '3', 10);
+
+/**
+ * Fetch a page through FlareSolverr, retrying when it times out or returns
+ * an incomplete page (it sometimes reports "ok" with only a page fragment)
+ */
+async function fetchViaFlaresolverr(flaresolverrUrl: string, url: string): Promise<string> {
+  const attempts = Math.max(1, FLARESOLVERR_RETRIES);
+  let lastError: any;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      const fsResponse = await axios.post<{
+        status: string;
+        message?: string;
+        solution: { response: string };
+      }>(
+        `${flaresolverrUrl}/v1`,
+        { cmd: 'request.get', url, maxTimeout: FLARESOLVERR_TIMEOUT },
+        { timeout: FLARESOLVERR_TIMEOUT + 10000, headers: { 'Content-Type': 'application/json' } }
+      );
+      if (fsResponse.data.status !== 'ok') {
+        throw new Error(`FlareSolverr failed: ${fsResponse.data.status} - ${fsResponse.data.message}`);
+      }
+      const html = fsResponse.data.solution?.response || '';
+      if (!/<\/body>/i.test(html)) {
+        throw new Error(`incomplete response (${html.length} chars)`);
+      }
+      return html;
+    } catch (error: any) {
+      lastError = error;
+      console.warn(`[Bookys] FlareSolverr attempt ${attempt}/${attempts} failed: ${error.message}`);
+      if (attempt < attempts) {
+        await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+      }
+    }
+  }
+  throw lastError;
+}
+
 /**
  * Resolve a Bookys /dl/ link to the final hoster URL
  *
@@ -70,19 +110,7 @@ export async function resolveBookysLink(url: string): Promise<string> {
       const status = directError?.response?.status;
       if ((status === 403 || status === 503) && config.flaresolverrUrl) {
         console.log(`[Bookys] Direct fetch failed (${status}), trying FlareSolverr`);
-        const fsResponse = await axios.post<{
-          status: string;
-          solution: { response: string };
-        }>(
-          `${config.flaresolverrUrl}/v1`,
-          { cmd: 'request.get', url, maxTimeout: 60000 },
-          { timeout: 70000, headers: { 'Content-Type': 'application/json' } }
-        );
-        if (fsResponse.data.status === 'ok') {
-          html = fsResponse.data.solution.response;
-        } else {
-          throw new Error(`FlareSolverr failed: ${fsResponse.data.status}`);
-        }
+        html = await fetchViaFlaresolverr(config.flaresolverrUrl, url);
       } else {
         throw directError;
       }

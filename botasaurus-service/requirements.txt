@@ -1,4 +1,5 @@
-botasaurus>=4.0.0
-flask>=3.0.0
-requests>=2.31.0
-opencv-python-headless>=4.8.0
+botasaurus>=4.0.97
+flask>=3.1.3
+requests>=2.34.2
+opencv-python-headless>=5.0.0.93
+ecdsa>=0.19.2

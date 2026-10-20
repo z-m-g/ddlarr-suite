@@ -1,23 +1,26 @@
 {
   "name": "ddl-downloader",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "type": "module",
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "tsx watch src/index.ts"
+    "dev": "tsx watch src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
-    "@fastify/formbody": "^7.4.0",
-    "@fastify/static": "^6.12.0",
-    "axios": ">=1.6.0 <1.14.1",
-    "chokidar": "^3.5.3",
-    "fastify": "^4.24.0",
+    "@fastify/formbody": "^9.0.1",
+    "@fastify/static": "^10.1.6",
+    "axios": ">=1.6.0 <1.20.1",
+    "chokidar": "^5.0.0",
+    "fastify": "^5.12.7",
     "myjdownloader": "^1.1.0"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
-    "tsx": "^4.0.0",
-    "typescript": "^5.3.0"
+    "@types/node": "^26.6.5",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.5"
   }
 }

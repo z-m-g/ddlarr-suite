@@ -16,7 +16,15 @@ services:
       - DLPROTECT_RESOLVE_AT=${DLPROTECT_RESOLVE_AT:-indexer}
       - BOOKYS_URL=${BOOKYS_URL:-}
       - BOOKYS_HOSTER=${BOOKYS_HOSTER:-1fichier}
+      - LOADIX_URL=${LOADIX_URL:-}
+      - LOADIX_API_URL=${LOADIX_API_URL:-https://api.loadix.fun}
+      - LOADIX_REFRESH_COOKIE=${LOADIX_REFRESH_COOKIE:-}
+      - LOADIX_ACCESS_TOKEN=${LOADIX_ACCESS_TOKEN:-}
+      - LOADIX_RESOLVE_AT=${LOADIX_RESOLVE_AT:-downloader}
+      - LOADIX_MAX_MEDIA=${LOADIX_MAX_MEDIA:-10}
       - FLARESOLVERR_URL=${FLARESOLVERR_URL:-}
+      - FLARESOLVERR_TIMEOUT=${FLARESOLVERR_TIMEOUT:-120000}
+      - FLARESOLVERR_RETRIES=${FLARESOLVERR_RETRIES:-3}
       - TMDB_API_KEY=${TMDB_API_KEY:-}
     depends_on:
       dlprotect-resolver:
@@ -64,6 +72,12 @@ services:
       - PYTHONUNBUFFERED=1
       - CACHE_DIR=/app/cache
       - PORT=${DLPROTECT_RESOLVER_PORT:-5000}
+      # Loadix automatic login (real browser for the Turnstile challenge)
+      - LOADIX_URL=${LOADIX_URL:-}
+      - LOADIX_API_URL=${LOADIX_API_URL:-https://api.loadix.fun}
+      - LOADIX_MNEMONIC=${LOADIX_MNEMONIC:-}
+      - LOADIX_EMAIL=${LOADIX_EMAIL:-}
+      - LOADIX_PASSWORD=${LOADIX_PASSWORD:-}
     volumes:
       - dlprotect-cache:/app/cache
     healthcheck:
@@ -100,6 +114,11 @@ services:
       - DLPROTECT_SERVICE_URL=http://dlprotect-resolver:${DLPROTECT_RESOLVER_PORT:-5000}
       - DLPROTECT_RESOLVE_AT=${DLPROTECT_RESOLVE_AT:-indexer}
       - DEBUG=${DEBUG:-false}
+      # Loadix session (needed to reveal Loadix links at download time)
+      - LOADIX_URL=${LOADIX_URL:-}
+      - LOADIX_API_URL=${LOADIX_API_URL:-https://api.loadix.fun}
+      - LOADIX_REFRESH_COOKIE=${LOADIX_REFRESH_COOKIE:-}
+      - LOADIX_ACCESS_TOKEN=${LOADIX_ACCESS_TOKEN:-}
       # Debrid Services (multiple services can be enabled - fallback in order)
       - ALLDEBRID_ENABLED=${ALLDEBRID_ENABLED:-false}
       - ALLDEBRID_API_KEY=${ALLDEBRID_API_KEY:-}
@@ -168,6 +187,13 @@ services:
       - TEMP_PATH=/downloads-temp
       - DLPROTECT_SERVICE_URL=http://dlprotect-resolver:${DLPROTECT_RESOLVER_PORT:-5000}
       - FLARESOLVERR_URL=${FLARESOLVERR_URL:-}
+      - FLARESOLVERR_TIMEOUT=${FLARESOLVERR_TIMEOUT:-120000}
+      - FLARESOLVERR_RETRIES=${FLARESOLVERR_RETRIES:-3}
+      # Loadix session (needed to reveal Loadix links at download time)
+      - LOADIX_URL=${LOADIX_URL:-}
+      - LOADIX_API_URL=${LOADIX_API_URL:-https://api.loadix.fun}
+      - LOADIX_REFRESH_COOKIE=${LOADIX_REFRESH_COOKIE:-}
+      - LOADIX_ACCESS_TOKEN=${LOADIX_ACCESS_TOKEN:-}
       # Authentication
       - QB_USERNAME=${QB_USERNAME:-admin}
       - QB_PASSWORD=${QB_PASSWORD:-adminadmin}

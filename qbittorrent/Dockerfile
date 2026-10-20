@@ -1,22 +1,25 @@
 # Build stage for UI
-FROM node:20-alpine AS ui-builder
+FROM node:22-alpine AS ui-builder
 WORKDIR /app/ui
 COPY ui/package*.json ./
-RUN npm install
+RUN npm ci
 COPY ui/ ./
 RUN npm run build
 
 # Build stage for backend
-FROM node:20-alpine AS backend-builder
+FROM node:22-alpine AS backend-builder
 WORKDIR /app
+# better-sqlite3 ships no prebuilt binary for Alpine (musl): it is compiled here,
+# and the resulting node_modules is copied into the production image below
+RUN apk add --no-cache python3 make g++
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 COPY src ./src
 COPY tsconfig.json ./
 RUN npm run build
 
 # Production image
-FROM node:20-alpine
+FROM node:22-alpine
 WORKDIR /app
 
 # Install curl for downloads and extraction tools
