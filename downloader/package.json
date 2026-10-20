@@ -10,7 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@fastify/formbody": "^7.4.0",
+    "@fastify/formbody": "^9.0.1",
     "@fastify/static": "^6.12.0",
     "axios": ">=1.6.0 <1.20.1",
     "chokidar": "^3.5.3",
