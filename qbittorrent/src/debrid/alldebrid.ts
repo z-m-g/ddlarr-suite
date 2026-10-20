@@ -262,15 +262,22 @@ export class AllDebridClient implements DebridService {
       }
     );
 
-    console.log(`[AllDebrid] Status response:`, JSON.stringify(response.data, null, 2));
+    if (process.env.DEBUG === 'true') {
+      console.log(`[AllDebrid] Status response:`, JSON.stringify(response.data, null, 2));
+    }
 
     const magnetsData = response.data.data?.magnets;
     if (response.data.status === 'success' && magnetsData) {
-      // Handle both single object (query by id) and array (query all)
-      const magnet = Array.isArray(magnetsData) ? magnetsData[0] : magnetsData;
+      // The API sometimes answers with the whole magnet list instead of the requested
+      // one: pick ours by id rather than trusting the first entry
+      const wantedId = Number(torrentId);
+      const magnet = Array.isArray(magnetsData)
+        ? magnetsData.find(m => m.id === wantedId) ?? (magnetsData.length === 1 ? magnetsData[0] : undefined)
+        : magnetsData;
       if (!magnet) {
-        throw new Error('No magnet found in response');
+        throw new Error(`Magnet ${torrentId} not found in status response`);
       }
+      console.log(`[AllDebrid] Magnet ${magnet.id}: ${magnet.status} (code ${magnet.statusCode}${magnet.size > 0 && magnet.downloaded ? `, ${Math.round((magnet.downloaded / magnet.size) * 100)}%` : ''})`);
 
       // AllDebrid v4.1 statusCode:
       // 0: In Queue
