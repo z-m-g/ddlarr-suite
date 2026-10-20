@@ -1,6 +1,6 @@
 {
   "name": "ddl-torznab",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "description": "Torznab indexer for DDL sites (WawaCity, Zone-Téléchargement, DarkiWorld, Bookys, Loadix)",
   "type": "module",
   "main": "dist/index.js",

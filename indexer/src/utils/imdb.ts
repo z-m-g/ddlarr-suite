@@ -7,6 +7,9 @@ import * as path from 'path';
 // TMDB is queried first since its coverage and French titles are more reliable.
 // The previous source (api.imdbapi.dev) is gone: the domain is parked and no longer resolves.
 const WIKIDATA_SPARQL_ENDPOINT = 'https://query.wikidata.org/sparql';
+// Wikimedia rejects SPARQL requests that look like a browser ("automated browsing through
+// proxy networks"): its policy asks for a descriptive User-Agent with a contact URL.
+const WIKIDATA_USER_AGENT = 'ddlarr-suite (https://github.com/z-m-g/ddlarr-suite)';
 const TMDB_API_BASE = 'https://api.themoviedb.org/3';
 
 // Cache file path (persistent across restarts)
@@ -125,7 +128,7 @@ async function fetchFromWikidata(normalizedId: string): Promise<ImdbTitles | nul
   console.log(`[IMDB] Fetching titles from Wikidata for ${normalizedId}`);
   const data = await fetchJson<SparqlResponse>(WIKIDATA_SPARQL_ENDPOINT, {
     params: { query: buildWikidataQuery(normalizedId), format: 'json' },
-    headers: { Accept: 'application/sparql-results+json' },
+    headers: { Accept: 'application/sparql-results+json', 'User-Agent': WIKIDATA_USER_AGENT },
   });
 
   const rows = data.results?.bindings ?? [];
@@ -214,7 +217,12 @@ export async function fetchImdbTitles(imdbId: string): Promise<ImdbTitles> {
         break;
       }
     } catch (error) {
-      console.error(`[IMDB] ${source.name} lookup failed for ${normalizedId}:`, error);
+      // One line, not the whole axios error with its request and response objects
+      const err = error as { response?: { status?: number; statusText?: string }; message?: string };
+      const detail = err.response?.status
+        ? `HTTP ${err.response.status}${err.response.statusText ? ` - ${err.response.statusText}` : ''}`
+        : err.message || String(error);
+      console.error(`[IMDB] ${source.name} lookup failed for ${normalizedId}: ${detail}`);
     }
   }
 
