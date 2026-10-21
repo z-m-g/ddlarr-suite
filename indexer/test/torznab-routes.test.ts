@@ -91,6 +91,17 @@ describe('Torznab routes', () => {
     expect(scraper.searchSeries).toHaveBeenCalledWith(expect.objectContaining({ season: '1', ep: '2' }));
   });
 
+  it('gives every item its own GUID even when links share a long prefix', async () => {
+    const prefix = 'https://api.loadix.fun/api/links/';
+    scraper.searchMovies.mockResolvedValueOnce([
+      { ...results[0], title: 'A', link: `${prefix}aaaaaaaa-0000-4000-8000-000000000001/reveal` },
+      { ...results[0], title: 'B', link: `${prefix}bbbbbbbb-0000-4000-8000-000000000002/reveal` },
+    ]);
+    const guids = [...(await get('/api/fake?t=search&q=heat')).body.matchAll(/<guid[^>]*>([^<]+)<\/guid>/g)].map(m => m[1]);
+    expect(guids).toHaveLength(2);
+    expect(new Set(guids).size).toBe(2);
+  });
+
   it('applies limit and offset', async () => {
     expect(titles((await get('/api/fake?t=search&q=heat&limit=1&offset=1')).body)).toEqual(['Heat.1995.DVDRip']);
   });

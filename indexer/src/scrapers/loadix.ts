@@ -353,13 +353,17 @@ export class LoadixScraper implements BaseScraper {
     const wantedEpisode = params.ep ? parseInt(params.ep, 10) : undefined;
 
     const results: ScraperResult[] = [];
+    const providersSeen = new Map<string, number>();
+    let droppedByHoster = 0;
 
     for (const link of links) {
       if (link.status && link.status !== 'validated') continue;
       if (link.linkType && link.linkType !== 'ddl_url') continue; // NZB not supported
 
       const provider = (link.provider || '').toLowerCase();
+      providersSeen.set(provider || '?', (providersSeen.get(provider || '?') || 0) + 1);
       if (allowedHosters && !allowedHosters.some(h => provider.includes(h) || h.includes(provider))) {
+        droppedByHoster++;
         continue;
       }
 
@@ -409,6 +413,10 @@ export class LoadixScraper implements BaseScraper {
     }
 
     console.log(`[Loadix] "${hit.title}": ${results.length} links kept after filters`);
+    if (results.length === 0 && droppedByHoster > 0) {
+      const seen = Array.from(providersSeen.entries()).map(([p, n]) => `${p} x${n}`).join(', ');
+      console.warn(`[Loadix] "${hit.title}": all ${droppedByHoster} links dropped by the hoster filter (${params.hoster}) - providers on site: ${seen}`);
+    }
     return results;
   }
 

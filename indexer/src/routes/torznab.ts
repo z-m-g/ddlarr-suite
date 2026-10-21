@@ -1,4 +1,5 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import * as crypto from 'crypto';
 import { getScraper, isValidSite, getAvailableSites, contentTypeToCategory } from '../scrapers/index.js';
 import { buildTorznabResponse, buildCapsResponse, buildErrorResponse } from '../utils/xml.js';
 import { TorznabItem, TorznabCaps, TorznabCategory, SearchParams, ScraperResult } from '../models/torznab.js';
@@ -99,7 +100,9 @@ async function processResults(results: ScraperResult[]): Promise<TorznabItem[]> 
 
     items.push({
       title: result.title,
-      guid: Buffer.from(result.link).toString('base64').slice(0, 40),
+      // Radarr/Sonarr collapse items sharing a GUID: hash the whole link rather than
+      // truncating it, since links of one site often share a long common prefix
+      guid: crypto.createHash('sha1').update(result.link).digest('hex'),
       link,
       comments: result.pageUrl,
       pubDate: result.pubDate,
