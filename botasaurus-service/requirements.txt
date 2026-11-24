@@ -1,5 +1,5 @@
 botasaurus>=4.0.97
 flask>=3.1.3
 requests>=2.34.2
-opencv-python-headless>=5.0.0.93
+opencv-python-headless>=5.1.0.95
 ecdsa>=0.19.2
